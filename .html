@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG动漫头像生成器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            padding: 30px 0;
+        }
+        
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            max-width: 600px;
+            margin: 0 auto 30px;
+        }
+        
+        .controls {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+        
+        button {
+            background: #4e54c8;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        button:hover {
+            background: #3f43a3;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        }
+        
+        .avatar-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        
+        .avatar-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        .avatar-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .avatar {
+            width: 150px;
+            height: 150px;
+            margin: 0 auto 15px;
+            border-radius: 50%;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .avatar-id {
+            font-size: 0.9rem;
+            opacity: 0.7;
+            margin-bottom: 5px;
+        }
+        
+        .traits {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+        
+        .stats {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 20px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        .stats h2 {
+            margin-bottom: 15px;
+        }
+        
+        .progress-bar {
+            height: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        
+        .progress {
+            height: 100%;
+            background: linear-gradient(90deg, #ff9a9e 0%, #fad0c4 100%);
+            border-radius: 5px;
+            transition: width 0.5s ease;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            margin-top: 40px;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .avatar-container {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            }
+            
+            .avatar {
+                width: 120px;
+                height: 120px;
+            }
+            
+            h1 {
+                font-size: 2.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SVG动漫头像生成器</h1>
+            <p class="subtitle">使用纯SVG代码生成独特的动漫风格头像。每次点击"生成新头像"按钮都会创建一组随机组合的动漫角色。</p>
+        </header>
+        
+        <div class="controls">
+            <button id="generateSingle">生成单个头像</button>
+            <button id="generateMultiple">生成5个头像</button>
+            <button id="generateBatch">生成10个头像</button>
+            <button id="reset">重置</button>
+        </div>
+        
+        <div class="stats">
+            <h2>生成统计</h2>
+            <p>已生成头像: <span id="generatedCount">0</span></p>
+            <div class="progress-bar">
+                <div class="progress" id="generationProgress" style="width: 0%"></div>
+            </div>
+            <p>目标: 10,000个独特头像</p>
+        </div>
+        
+        <div class="avatar-container" id="avatarContainer">
+            <!-- 头像将在这里动态生成 -->
+        </div>
+        
+        <footer>
+            <p>SVG动漫头像生成器 &copy; 2023 | 使用纯SVG和JavaScript构建</p>
+        </footer>
+    </div>
+
+    <script>
+        // 组件定义
+        const components = {
+            faces: [
+                { id: 'face1', path: 'M 80,140 Q 200,80 320,140 Q 300,280 200,320 Q 100,280 80,140 Z', color: '#FFE0BD' },
+                { id: 'face2', path: 'M 100,130 Q 200,70 300,130 Q 280,290 200,330 Q 120,290 100,130 Z', color: '#FAD6B9' },
+                { id: 'face3', path: 'M 90,150 Q 200,90 310,150 Q 290,300 200,340 Q 110,300 90,150 Z', color: '#FFDBB5' },
+                { id: 'face4', path: 'M 110,120 Q 200,60 290,120 Q 270,270 200,310 Q 130,270 110,120 Z', color: '#F3CFB3' }
+            ],
+            
+            eyes: [
+                { 
+                    id: 'eye1', 
+                    left: { path: 'M 130,180 Q 150,160 170,180 Q 150,200 130,180 Z', color: '#FFFFFF' },
+                    right: { path: 'M 230,180 Q 250,160 270,180 Q 250,200 230,180 Z', color: '#FFFFFF' },
+                    pupil: { path: 'M 145,180 Q 150,175 155,180 Q 150,185 145,180 Z M 245,180 Q 250,175 255,180 Q 250,185 245,180 Z', color: '#2C3E50' }
+                },
+                { 
+                    id: 'eye2', 
+                    left: { path: 'M 120,190 L 160,190 L 160,210 L 120,210 Z', color: '#FFFFFF' },
+                    right: { path: 'M 240,190 L 280,190 L 280,210 L 240,210 Z', color: '#FFFFFF' },
+                    pupil: { path: 'M 130,200 L 150,200 M 250,200 L 270,200', color: '#2C3E50', stroke: '2' }
+                },
+                { 
+                    id: 'eye3', 
+                    left: { path: 'M 130,190 A 20,15 0 1,1 170,190 A 20,15 0 1,1 130,190 Z', color: '#FFFFFF' },
+                    right: { path: 'M 230,190 A 20,15 0 1,1 270,190 A 20,15 0 1,1 230,190 Z', color: '#FFFFFF' },
+                    pupil: { path: 'M 150,195 A 5,5 0 1,1 160,195 A 5,5 0 1,1 150,195 Z M 250,195 A 5,5 0 1,1 260,195 A 5,5 0 1,1 250,195 Z', color: '#2C3E50' }
+                }
+            ],
+            
+            hair: [
+                { id: 'hair1', path: 'M 70,120 Q 200,50 330,120 Q 310,200 290,250 Q 110,250 90,200 Q 70,160 70,120 Z', color: '#8B4513' },
+                { id: 'hair2', path: 'M 80,100 Q 200,40 320,100 Q 300,220 280,280 Q 120,280 100,220 Q 80,150 80,100 Z', color: '#4A3520' },
+                { id: 'hair3', path: 'M 90,110 Q 200,60 310,110 L 310,140 Q 300,200 280,240 Q 120,240 100,200 Q 90,150 90,110 Z', color: '#A67B5B' },
+                { id: 'hair4', path: 'M 60,130 Q 200,70 340,130 Q 320,240 300,290 Q 100,290 80,240 Q 60,180 60,130 Z', color: '#D2691E' }
+            ],
+            
+            mouths: [
+                { id: 'mouth1', path: 'M 160,250 Q 200,270 240,250', color: 'none', stroke: '#E75480', strokeWidth: '3' },
+                { id: 'mouth2', path: 'M 160,260 A 40,20 0 0,0 240,260', color: 'none', stroke: '#E75480', strokeWidth: '3' },
+                { id: 'mouth3', path: 'M 170,250 Q 200,240 230,250', color: 'none', stroke: '#E75480', strokeWidth: '3' },
+                { id: 'mouth4', path: 'M 170,260 Q 200,280 230,260', color: '#E75480', stroke: 'none' }
+            ],
+            
+            accessories: [
+                { id: 'glasses1', path: 'M 120,190 A 30,25 0 0,1 180,190 A 30,25 0 0,1 120,190 Z M 220,190 A 30,25 0 0,1 280,190 A 30,25 0 0,1 220,190 Z M 180,190 L 220,190', color: 'none', stroke: '#333', strokeWidth: '3' },
+                { id: 'glasses2', path: 'M 110,180 L 150,180 L 150,200 L 110,200 Z M 250,180 L 290,180 L 290,200 L 250,200 Z M 150,190 L 250,190', color: 'none', stroke: '#555', strokeWidth: '3' },
+                { id: 'ribbon', path: 'M 150,120 Q 200,100 250,120 Q 240,140 200,150 Q 160,140 150,120 Z', color: '#FF69B4' },
+                { id: 'hat', path: 'M 100,80 Q 200,40 300,80 Q 280,120 200,140 Q 120,120 100,80 Z', color: '#FF6B6B' }
+            ],
+            
+            eyebrows: [
+                { id: 'eyebrow1', path: 'M 120,160 Q 140,150 160,160 M 240,160 Q 260,150 280,160', color: 'none', stroke: '#4A3520', strokeWidth: '3' },
+                { id: 'eyebrow2', path: 'M 120,155 L 160,165 M 240,155 L 280,165', color: 'none', stroke: '#4A3520', strokeWidth: '3' },
+                { id: 'eyebrow3', path: 'M 120,165 Q 140,155 160,165 M 240,165 Q 260,155 280,165', color: 'none', stroke: '#4A3520', strokeWidth: '3' }
+            ],
+            
+            blushes: [
+                { id: 'blush1', path: 'M 100,220 Q 120,210 140,220 Q 120,230 100,220 Z M 260,220 Q 280,210 300,220 Q 280,230 260,220 Z', color: '#FFB6C1', opacity: '0.4' },
+                { id: 'blush2', path: 'M 90,210 A 20,15 0 1,1 130,210 A 20,15 0 1,1 90,210 Z M 270,210 A 20,15 0 1,1 310,210 A 20,15 0 1,1 270,210 Z', color: '#FFC0CB', opacity: '0.5' }
+            ]
+        };
+
+        // 颜色主题
+        const colorThemes = [
+            { primary: '#6A11CB', secondary: '#2575FC' },
+            { primary: '#FF416C', secondary: '#FF4B2B' },
+            { primary: '#38EF7D', secondary: '#11998E' },
+            { primary: '#FFE000', secondary: '#799F0C' },
+            { primary: '#4A00E0', secondary: '#8E2DE2' },
+            { primary: '#F46B45', secondary: '#EEA849' }
+        ];
+
+        // 全局变量
+        let generatedCount = 0;
+        const generatedHashes = new Set();
+        const maxCombinations = 10000;
+
+        // DOM元素
+        const avatarContainer = document.getElementById('avatarContainer');
+        const generatedCountElement = document.getElementById('generatedCount');
+        const generationProgress = document.getElementById('generationProgress');
+
+        // 工具函数
+        function getRandomElement(array) {
+            return array[Math.floor(Math.random() * array.length)];
+        }
+
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        function generateHash(traits) {
+            return Object.values(traits).map(trait => trait.id).join('-');
+        }
+
+        // 生成随机头像特征
+        function generateRandomTraits() {
+            let traits, hash;
+            let attempts = 0;
+            
+            do {
+                traits = {
+                    face: getRandomElement(components.faces),
+                    eyes: getRandomElement(components.eyes),
+                    hair: getRandomElement(components.hair),
+                    mouth: getRandomElement(components.mouths),
+                    accessory: Math.random() > 0.7 ? getRandomElement(components.accessories) : null,
+                    eyebrow: getRandomElement(components.eyebrows),
+                    blush: Math.random() > 0.5 ? getRandomElement(components.blushes) : null,
+                    theme: getRandomElement(colorThemes)
+                };
+                
+                hash = generateHash(traits);
+                attempts++;
+                
+                if (attempts > 100) {
+                    console.warn('生成唯一组合困难，重置哈希集合');
+                    generatedHashes.clear();
+                    break;
+                }
+            } while (generatedHashes.has(hash));
+            
+            generatedHashes.add(hash);
+            return traits;
+        }
+
+        // 渲染SVG头像
+        function renderAvatar(traits, id) {
+            const svg = `
+            <svg width="150" height="150" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="bgGradient${id}" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="${traits.theme.primary}"/>
+                        <stop offset="100%" stop-color="${traits.theme.secondary}"/>
+                    </linearGradient>
+                </defs>
+                
+                <!-- 背景 -->
+                <rect width="400" height="400" fill="url(#bgGradient${id})"/>
+                
+                <!-- 脸 -->
+                <path d="${traits.face.path}" fill="${traits.face.color}"/>
+                
+                <!-- 腮红 -->
+                ${traits.blush ? `<path d="${traits.blush.path}" fill="${traits.blush.color}" opacity="${traits.blush.opacity}"/>` : ''}
+                
+                <!-- 眼睛 -->
+                <path d="${traits.eyes.left.path}" fill="${traits.eyes.left.color}"/>
+                <path d="${traits.eyes.right.path}" fill="${traits.eyes.right.color}"/>
+                <path d="${traits.eyes.pupil.path}" fill="${traits.eyes.pupil.color}" ${traits.eyes.pupil.stroke ? `stroke="${traits.eyes.pupil.stroke}" stroke-width="${traits.eyes.pupil.strokeWidth}"` : ''}/>
+                
+                <!-- 眉毛 -->
+                <path d="${traits.eyebrow.path}" fill="${traits.eyebrow.color}" stroke="${traits.eyebrow.stroke}" stroke-width="${traits.eyebrow.strokeWidth}"/>
+                
+                <!-- 嘴巴 -->
+                <path d="${traits.mouth.path}" fill="${traits.mouth.color}" ${traits.mouth.stroke ? `stroke="${traits.mouth.stroke}" stroke-width="${traits.mouth.strokeWidth}"` : ''}/>
+                
+                <!-- 发型 -->
+                <path d="${traits.hair.path}" fill="${traits.hair.color}"/>
+                
+                <!-- 配饰 -->
+                ${traits.accessory ? `<path d="${traits.accessory.path}" fill="${traits.accessory.color}" ${traits.accessory.stroke ? `stroke="${traits.accessory.stroke}" stroke-width="${traits.accessory.strokeWidth}"` : ''} ${traits.accessory.opacity ? `opacity="${traits.accessory.opacity}"` : ''}/>` : ''}
+            </svg>`;
+            
+            return svg;
+        }
+
+        // 生成头像卡片
+        function generateAvatarCard(id) {
+            const traits = generateRandomTraits();
+            const svg = renderAvatar(traits, id);
+            
+            const card = document.createElement('div');
+            card.className = 'avatar-card';
+            card.innerHTML = `
+                <div class="avatar-id">头像 #${id}</div>
+                <div class="avatar">${svg}</div>
+                <div class="traits">${traits.face.id} · ${traits.eyes.id} · ${traits.hair.id}</div>
+            `;
+            
+            return card;
+        }
+
+        // 生成多个头像
+        function generateAvatars(count) {
+            for (let i = 0; i < count; i++) {
+                if (generatedCount >= maxCombinations) {
+                    alert(`已达到最大生成数量: ${maxCombinations}`);
+                    break;
+                }
+                
+                generatedCount++;
+                const card = generateAvatarCard(generatedCount);
+                avatarContainer.appendChild(card);
+            }
+            
+            updateStats();
+        }
+
+        // 更新统计信息
+        function updateStats() {
+            generatedCountElement.textContent = generatedCount;
+            const progress = (generatedCount / maxCombinations) * 100;
+            generationProgress.style.width = `${progress}%`;
+        }
+
+        // 重置生成器
+        function resetGenerator() {
+            avatarContainer.innerHTML = '';
+            generatedCount = 0;
+            generatedHashes.clear();
+            updateStats();
+        }
+
+        // 事件监听
+        document.getElementById('generateSingle').addEventListener('click', () => generateAvatars(1));
+        document.getElementById('generateMultiple').addEventListener('click', () => generateAvatars(5));
+        document.getElementById('generateBatch').addEventListener('click', () => generateAvatars(10));
+        document.getElementById('reset').addEventListener('click', resetGenerator);
+
+        // 初始化
+        updateStats();
+    </script>
+</body>
+</html>
