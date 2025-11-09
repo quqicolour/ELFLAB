@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity >=0.8.0<0.8.20;
+pragma solidity >=0.8.0;
 
 interface IELFFactory {
 
@@ -18,17 +18,25 @@ interface IELFFactory {
 
     // =================================Wirte==========================================
     function setManager(address _manager) external;
-    function setFeeReceiver(address _feeReceiver) external;
-    function setPairFee(address pair, uint16 fee) external;
+    function setFeeReceiver(address _newFeeReceiver) external;
+    function setPoolInfo(
+        uint16 _token0FeePercent,
+        uint16 _token1FeePercent,
+        uint16 _luckyPoolFeePercent,
+        address _pair,
+        address _luckyPool,
+        bool _stableSwap,
+        bool _isActive
+    ) external;
 
     function createPair(address tokenA, address tokenB) external returns (address pair);
 
     // =================================Read==========================================
     function feeReceiver() external view returns (address);
-    function poolInfo(address) external view returns (PoolInfo memory);
     function getPair(address, address) external view returns (address);
     function indexPair(uint256 index) external view returns (address _thisPair);
     function allPairsLength() external view returns (uint256);
+    function getPoolInfo(address pair) external view returns (PoolInfo memory _thisPoolInfo);
     function pairCodeHash() external view returns (bytes32 _pairCodeHash);
 
 }

@@ -71,10 +71,6 @@ contract ELFPair is IELFPair, ELFERC20 {
     initialized = 1;
   }
 
-  function getOwner()private view returns(address _owner){
-    _owner=IELFFactory(factory).getOwner();
-  }
-
   // update reserves
   function _update(uint256 balance0, uint256 balance1) private {
     require(balance0 <= type(uint112).max && balance1 <= type(uint112).max, "ELF: OVERFLOW");
@@ -156,7 +152,7 @@ contract ELFPair is IELFPair, ELFERC20 {
       if (tokensData.amount0Out > 0) _safeTransfer(tokensData.token0, to, tokensData.amount0Out);
       // optimistically transfer tokens
       if (tokensData.amount1Out > 0) _safeTransfer(tokensData.token1, to, tokensData.amount1Out);
-      if (data.length > 0) IELFCallee(to).ELFV2Call(msg.sender, tokensData.amount0Out, tokensData.amount1Out, data);
+      if (data.length > 0) IELFCallee(to).elfV2Call(msg.sender, tokensData.amount0Out, tokensData.amount1Out, data);
       tokensData.balance0 = _getBalance(tokensData.token0, address(this));
       tokensData.balance1 = _getBalance(tokensData.token1, address(this));
     }
@@ -175,6 +171,7 @@ contract ELFPair is IELFPair, ELFERC20 {
       uint256 luckyFee;
       address feeReceiver = _getPoolInfo().feeReceiver;
       if(feeReceiver != address(0)){
+        address luckyPool = _getPoolInfo().luckyPool;
         if (amount0In > 0) {
           fee = amount0In * _getPoolInfo().token0FeePercent / FEE_DENOMINATOR;
           if(_getPoolInfo().luckyPoolFeePercent != 0){
@@ -267,7 +264,7 @@ contract ELFPair is IELFPair, ELFERC20 {
   }
 
   function _getPoolInfo() private view returns (IELFFactory.PoolInfo memory thisPoolInfo) {
-    thisPoolInfo = IELFFactory(factory).poolInfo(address(this));
+    thisPoolInfo = IELFFactory(factory).getPoolInfo(address(this));
   }
 
   function _getAmountOut(

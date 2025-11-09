@@ -4,16 +4,15 @@ pragma solidity ^0.8.23;
 import '../interfaces/IELFFactory.sol';
 import './ELFPair.sol';
 
-contract ELFFactory is IELFFactory{
+contract ELFFactory is IELFFactory {
 
     address private owner;
     address private manager;
     address public feeReceiver;
-    address public luckyPool;
 
     address[] private allPairs;
 
-    mapping(address => PoolInfo) public poolInfo;
+    mapping(address => PoolInfo) private poolInfo;
 
     mapping(address => mapping(address => address)) public getPair;
 
@@ -37,6 +36,7 @@ contract ELFFactory is IELFFactory{
 
     modifier onlyManager() {
         require(manager == msg.sender, "Non mananger");
+        _;
     }
 
     function createPair(address tokenA, address tokenB) external returns (address pair) {
@@ -44,7 +44,7 @@ contract ELFFactory is IELFFactory{
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0), 'ELFFactory: ZERO_ADDRESS');
         require(getPair[token0][token1] == address(0), 'ELFFactory: PAIR_EXISTS'); // single check is sufficient
-        bytes memory bytecode = pairCodeHash();
+        bytes memory bytecode = type(ELFPair).creationCode;
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         assembly {
             pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
@@ -59,26 +59,29 @@ contract ELFFactory is IELFFactory{
     }
 
     function setManager(address _manager) external onlyOwner {
-        manager = _managerl
+        manager = _manager;
+    }
+
+    function setFeeReceiver(address _newFeeReceiver) external onlyOwner {
+        feeReceiver = _newFeeReceiver;
     }
 
     function setPoolInfo(
-        address pair,
-        uint16 token0FeePercent,
-        uint16 token1FeePercent,
-        uint16 luckyPoolFeePercent,
-        address feeReceiver,
-        address luckyPool,
-        bool stableSwap,
-        bool isActive
+        uint16 _token0FeePercent,
+        uint16 _token1FeePercent,
+        uint16 _luckyPoolFeePercent,
+        address _pair,
+        address _luckyPool,
+        bool _stableSwap,
+        bool _isActive
     ) external onlyManager {
-        poolInfo[pair].token0FeePercent = token0FeePercent;
-        poolInfo[pair].token1FeePercent = token1FeePercent;
-        poolInfo[pair].luckyPoolFeePercent = luckyPoolFeePercent;
-        poolInfo[pair].feeReceiver = feeReceiver;
-        poolInfo[pair].luckyPool = luckyPool;
-        poolInfo[pair].stableSwap = stableSwap;
-        poolInfo[pair].isActive = isActive;
+        poolInfo[_pair].token0FeePercent = _token0FeePercent;
+        poolInfo[_pair].token1FeePercent = _token1FeePercent;
+        poolInfo[_pair].luckyPoolFeePercent = _luckyPoolFeePercent;
+        poolInfo[_pair].feeReceiver = feeReceiver;
+        poolInfo[_pair].luckyPool = _luckyPool;
+        poolInfo[_pair].stableSwap = _stableSwap;
+        poolInfo[_pair].isActive = _isActive;
     }
 
     function indexPair(uint256 index) external view returns (address _thisPair) {
@@ -87,6 +90,10 @@ contract ELFFactory is IELFFactory{
 
     function allPairsLength() external view returns (uint256 _groupLength) {
         _groupLength = allPairs.length;
+    }
+
+    function getPoolInfo(address pair) external view returns (PoolInfo memory _thisPoolInfo) {
+        _thisPoolInfo = poolInfo[pair];
     }
 
     function pairCodeHash() public view returns (bytes32 _pairCodeHash) {

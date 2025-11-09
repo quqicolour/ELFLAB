@@ -36,7 +36,6 @@ interface IELFPair {
     function getAmountOut(uint amountIn, address tokenIn) external view returns (uint);
     function kLast() external view returns (uint);
 
-    function setFeePercent(uint16 token0FeePercent, uint16 token1FeePercent) external;
     function mint(address to) external returns (uint liquidity);
     function burn(address to) external returns (uint amount0, uint amount1);
     function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external;
