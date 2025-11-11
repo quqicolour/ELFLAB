@@ -9,6 +9,7 @@ contract ELFFactory is IELFFactory {
     address private owner;
     address private manager;
     address public feeReceiver;
+    address public elf;
 
     address[] private allPairs;
 
@@ -19,11 +20,13 @@ contract ELFFactory is IELFFactory {
     constructor(
         address _owner, 
         address _manager,
-        address _feeReceiver
+        address _feeReceiver,
+        address _elf
     ){
         owner = _owner;
         manager = _manager;
         feeReceiver = _feeReceiver;
+        elf = _elf;
     }
 
     /**
@@ -44,12 +47,14 @@ contract ELFFactory is IELFFactory {
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0), 'ELFFactory: ZERO_ADDRESS');
         require(getPair[token0][token1] == address(0), 'ELFFactory: PAIR_EXISTS'); // single check is sufficient
-        bytes memory bytecode = type(ELFPair).creationCode;
+        bytes memory bytecode = abi.encodePacked(type(ELFPair).creationCode, abi.encode(elf));
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         assembly {
-            pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
+            pair := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
+            if iszero(extcodesize(pair)) {
+                revert(0, 0)
+            }
         }
-        require(pair != address(0));
         ELFPair(pair).initialize(token0, token1);
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
@@ -96,7 +101,7 @@ contract ELFFactory is IELFFactory {
         _thisPoolInfo = poolInfo[pair];
     }
 
-    function pairCodeHash() public view returns (bytes32 _pairCodeHash) {
+    function pairCodeHash() external view returns (bytes32 _pairCodeHash) {
         _pairCodeHash = keccak256(type(ELFPair).creationCode);
     }
 

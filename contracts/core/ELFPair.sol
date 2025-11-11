@@ -6,6 +6,7 @@ import '../interfaces/IELFPair.sol';
 import '../interfaces/IERC20.sol';
 import '../interfaces/IELFFactory.sol';
 import '../interfaces/IELFCallee.sol';
+import '../interfaces/IELFNft.sol';
 
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -19,16 +20,14 @@ contract ELFPair is IELFPair, ELFERC20 {
   
   address private token0;
   address private token1;
-
-  uint256 private initialized;
-  uint256 private unlocked = 1;
+  address private elfNFT;
 
   // uint public constant MAX_FEE_PERCENT = 2000; // = 2%
 
   uint112 private reserve0;           // uses single storage slot, accessible via getReserves
   uint112 private reserve1;           // uses single storage slot, accessible via getReserves
-  uint16 public token0FeePercent = 300; // default = 0.3%  // uses single storage slot, accessible via getReserves
-  uint16 public token1FeePercent = 300; // default = 0.3%  // uses single storage slot, accessible via getReserves
+  uint16 private initialized;
+  uint16 private unlocked = 1;
 
   uint256 private precisionMultiplier0;
   uint256 private precisionMultiplier1;
@@ -42,11 +41,27 @@ contract ELFPair is IELFPair, ELFERC20 {
     unlocked = 1;
   }
 
-  function getReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint16 _token0FeePercent, uint16 _token1FeePercent) {
+  constructor(address _elf) ELFERC20() {
+    factory = msg.sender;
+    elfNFT = _elf;
+  }
+
+  function getReserves() public view returns (
+    uint112 _reserve0, 
+    uint112 _reserve1, 
+    uint16 _token0FeePercent, 
+    uint16 _token1FeePercent
+  ) {
     _reserve0 = reserve0;
     _reserve1 = reserve1;
-    _token0FeePercent = token0FeePercent;
-    _token1FeePercent = token1FeePercent;
+    if(_checkValidElf()){
+      // 50%
+      _token0FeePercent = _getPoolInfo().token0FeePercent / 2;
+      _token1FeePercent = _getPoolInfo().token1FeePercent / 2;
+    }else{
+      _token0FeePercent = _getPoolInfo().token0FeePercent;
+      _token1FeePercent = _getPoolInfo().token1FeePercent;
+    }
   }
 
   function _safeTransfer(address token, address to, uint value) private {
@@ -54,13 +69,9 @@ contract ELFPair is IELFPair, ELFERC20 {
     require(success && (data.length == 0 || abi.decode(data, (bool))),"ELF: TRANSFER_FAILED");
   }
 
-  constructor() ELFERC20() {
-    factory = msg.sender;
-  }
-
   // called once by the factory at time of deployment
   function initialize(address _token0, address _token1) external {
-    require(msg.sender == factory && initialized==0);
+    require(msg.sender == factory && initialized == 0);
     // sufficient check
     token0 = _token0;
     token1 = _token1;
@@ -173,7 +184,7 @@ contract ELFPair is IELFPair, ELFERC20 {
       if(feeReceiver != address(0)){
         address luckyPool = _getPoolInfo().luckyPool;
         if (amount0In > 0) {
-          fee = amount0In * _getPoolInfo().token0FeePercent / FEE_DENOMINATOR;
+          fee = amount0In * _token0FeePercent / FEE_DENOMINATOR;
           if(_getPoolInfo().luckyPoolFeePercent != 0){
             luckyFee = amount0In * _getPoolInfo().luckyPoolFeePercent / FEE_DENOMINATOR;
           }
@@ -185,7 +196,7 @@ contract ELFPair is IELFPair, ELFERC20 {
           }
         }
         if (amount1In > 0) {
-          fee = amount1In *  _getPoolInfo().token1FeePercent / FEE_DENOMINATOR;
+          fee = amount1In * _token1FeePercent / FEE_DENOMINATOR;
           if(_getPoolInfo().luckyPoolFeePercent != 0){
             luckyFee = amount1In * _getPoolInfo().luckyPoolFeePercent / FEE_DENOMINATOR;
           }
@@ -198,13 +209,13 @@ contract ELFPair is IELFPair, ELFERC20 {
         }
       }
 
-      // readjust tokens balance
+      // read just tokens balance
       if (amount0In > 0) tokensData.balance0 = _getBalance(tokensData.token0, address(this));
       if (amount1In > 0) tokensData.balance1 = _getBalance(tokensData.token1, address(this));
     }
     {// scope for reserve{0,1}Adjusted, avoids stack too deep errors
-    uint256 balance0Adjusted = tokensData.balance0 - tokensData.remainingFee0;
-    uint256 balance1Adjusted = tokensData.balance1 - tokensData.remainingFee1;
+      uint256 balance0Adjusted = tokensData.balance0 - tokensData.remainingFee0;
+      uint256 balance1Adjusted = tokensData.balance1 - tokensData.remainingFee1;
       require(_k(balance0Adjusted, balance1Adjusted) >= _k(uint256(_reserve0), uint256(_reserve1)));
     }
     _update(tokensData.balance0, tokensData.balance1);
@@ -267,6 +278,12 @@ contract ELFPair is IELFPair, ELFERC20 {
     thisPoolInfo = IELFFactory(factory).getPoolInfo(address(this));
   }
 
+  function _checkValidElf() private view returns (bool state) {
+    if(IELFNft(elfNFT).valid(tx.origin)){
+      state = true;
+    }
+  }
+
   function _getAmountOut(
     uint256 amountIn, 
     address tokenIn, 
@@ -274,8 +291,13 @@ contract ELFPair is IELFPair, ELFERC20 {
     uint256 _reserve1, 
     uint256 feePercent
   ) internal view returns (uint256) {
+    uint16 luckyPoolFeePercent = _getPoolInfo().luckyPoolFeePercent;
+    uint256 newFeePercent;
+    if(_checkValidElf()){
+      newFeePercent = feePercent / 2;
+    }
     if (_getPoolInfo().stableSwap) {
-      amountIn = amountIn - amountIn * feePercent / FEE_DENOMINATOR; // remove fee from amount received
+      amountIn = amountIn - amountIn * (newFeePercent + luckyPoolFeePercent) / FEE_DENOMINATOR; // remove fee from amount received
       uint256 xy = _k(_reserve0, _reserve1);
       _reserve0 = _reserve0 * precisionMultiplier0 * 1e18 / precisionMultiplier0;
       _reserve1 = _reserve1 * precisionMultiplier1 * 1e18 / precisionMultiplier1;
@@ -284,16 +306,15 @@ contract ELFPair is IELFPair, ELFERC20 {
       amountIn = tokenIn == token0 ? amountIn * 1e18 / precisionMultiplier0 : amountIn * 1e18 / precisionMultiplier1;
       uint256 y = reserveB - _get_y(amountIn + reserveA, xy, reserveB);
       return y * (tokenIn == token0 ? precisionMultiplier1 : precisionMultiplier0) / 1e18;
-
     } else {
       (uint256 reserveA, uint256 reserveB) = tokenIn == token0 ? (_reserve0, _reserve1) : (_reserve1, _reserve0);
-      amountIn = amountIn * (FEE_DENOMINATOR - feePercent);
+      amountIn = amountIn * (FEE_DENOMINATOR - newFeePercent - luckyPoolFeePercent);
       return (amountIn * reserveB) / (reserveA * FEE_DENOMINATOR + amountIn);
     }
   }
 
   function getAmountOut(uint256 amountIn, address tokenIn) external view returns (uint256) {
-    uint16 feePercent = tokenIn == token0 ? token0FeePercent : token1FeePercent;
+    uint16 feePercent = tokenIn == token0 ? _getPoolInfo().token0FeePercent : _getPoolInfo().token1FeePercent;
     return _getAmountOut(amountIn, tokenIn, uint256(reserve0), uint256(reserve1), feePercent);
   }
 

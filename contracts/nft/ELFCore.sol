@@ -11,7 +11,6 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IERC165, ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
-
 contract ELFCore is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
     using Strings for uint256;
 
@@ -28,6 +27,8 @@ contract ELFCore is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
     mapping(address => uint256) private _balances;
 
     mapping(uint256 => address) private _tokenApprovals;
+
+    mapping(address => uint256) public personalLastestTransfer;
 
     mapping(address => mapping(address => bool)) private _operatorApprovals;
 
@@ -69,6 +70,13 @@ contract ELFCore is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
 
         string memory baseURI = _baseURI();
         return bytes(baseURI).length > 0 ? string.concat(baseURI, tokenId.toString()) : "";
+    }
+
+    function valid(address user) public view returns (bool state) {
+        uint256 old = personalLastestTransfer[user];
+        if(_balances[user] > 0 && block.timestamp >= old + 1 days){
+            state = true;
+        }
     }
 
     /**
@@ -238,6 +246,8 @@ contract ELFCore is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
 
         _owners[tokenId] = to;
 
+        personalLastestTransfer[from] = block.timestamp;
+        personalLastestTransfer[to] = block.timestamp;
         emit Transfer(from, to, tokenId);
 
         return from;
