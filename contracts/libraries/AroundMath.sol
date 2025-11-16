@@ -15,21 +15,36 @@ library AroundMath {
         netInput = _inputAmount - fee;
     }
     
-    // 计算包含费用的输出
+    // 购买yes或者no（计算包含费用的输出）
     function _calculateOutput(
         IAroundMarket.Bet _bet,
         uint16 _feeRate,
         uint128 _inputAmount,
         uint256 _virtualLiquidity,
         uint256 _yesAmount, 
-        uint256 _noAmount
+        uint256 _noAmount,
+        uint256 _collateralBalance
     ) internal pure returns (uint256 _output, uint128 _fee) {
         if(_bet == IAroundMarket.Bet.Yes) {
             // 购买YES代币：用抵押物换取YES
-            (_output, _fee) = _calculateYesOutput(_feeRate, _inputAmount, _virtualLiquidity, _yesAmount, _noAmount);
+            (_output, _fee) = _calculateYesOutput(
+                _feeRate, 
+                _inputAmount, 
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount, 
+                _collateralBalance
+            );
         } else if(_bet == IAroundMarket.Bet.No) {
             // 购买NO代币：用抵押物换取NO
-            (_output, _fee) = _calculateNoOutput(_feeRate, _inputAmount, _virtualLiquidity, _yesAmount, _noAmount);
+            (_output, _fee) = _calculateNoOutput(
+                _feeRate,
+                _inputAmount, 
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount, 
+                _collateralBalance
+            );
         } else {
             revert("Invalid bet");
         }
@@ -40,19 +55,20 @@ library AroundMath {
         uint128 _inputAmount,
         uint256 _virtualLiquidity,
         uint256 _yesAmount, 
-        uint256 _noAmount
+        uint256 _noAmount,
+        uint256 _collateralBalance
     ) internal pure returns (uint256 output, uint128 fee) {
         // 计算净输入（扣除费用）
         (uint128 netInput, uint128 inputFee) = _calculateNetInput(_feeRate, _inputAmount);
         
-        // 使用改进的恒定乘积公式： (yes + virtual) * (no + virtual) = k
-        uint256 k = (_yesAmount + _virtualLiquidity) * (_noAmount + _virtualLiquidity);
-        uint256 newNoAmount = _noAmount + netInput;
+        // 使用恒定乘积公式： (_yesAmount + virtual) * (collateralBalance + virtual) = k
+        uint256 k = (_yesAmount + _virtualLiquidity) * (_collateralBalance + _virtualLiquidity);
+        uint256 newCollateralBalance = _collateralBalance + netInput;
         
-        // 计算新的YES数量：newYes = k / (newNo + virtual) - virtual
-        uint256 newYesAmount = (k / (newNoAmount + _virtualLiquidity)) - _virtualLiquidity;
+        // 计算新的YES代币数量：newYesAmount = k / (newCollateralBalance + virtual) - virtual
+        uint256 newYesAmount = (k / (newCollateralBalance + _virtualLiquidity)) - _virtualLiquidity;
         
-        // 输出量 = 原来的YES数量 - 新的YES数量
+        // 输出量 = 原来的YES代币数量 - 新的YES代币数量
         if (_yesAmount > newYesAmount) {
             output = _yesAmount - newYesAmount;
             fee = inputFee;
@@ -67,19 +83,20 @@ library AroundMath {
         uint128 _inputAmount,
         uint256 _virtualLiquidity,
         uint256 _yesAmount, 
-        uint256 _noAmount
+        uint256 _noAmount,
+        uint256 _collateralBalance
     ) internal pure returns (uint256 output, uint128 fee) {
         // 计算净输入（扣除费用）
         (uint128 netInput, uint128 inputFee) = _calculateNetInput(_feeRate, _inputAmount);
         
-        // 类似的逻辑，但是购买NO代币
-        uint256 k = (_yesAmount + _virtualLiquidity) * (_noAmount + _virtualLiquidity);
-        uint256 newYesAmount = _yesAmount + netInput;
+        // 使用恒定乘积公式： (noTokens + virtual) * (collateralBalance + virtual) = k
+        uint256 k = (_noAmount + _virtualLiquidity) * (_collateralBalance + _virtualLiquidity);
+        uint256 newCollateralBalance = _collateralBalance + netInput;
         
-        // 计算新的NO数量：newNo = k / (newYes + virtual) - virtual
-        uint256 newNoAmount = (k / (newYesAmount + _virtualLiquidity)) - _virtualLiquidity;
+        // 计算新的NO代币数量：newNoAmount = k / (newCollateralBalance + virtual) - virtual
+        uint256 newNoAmount = (k / (newCollateralBalance + _virtualLiquidity)) - _virtualLiquidity;
         
-        // 输出量 = 原来的NO数量 - 新的NO数量
+        // 输出量 = 原来的NO代币数量 - 新的NO代币数量
         if (_noAmount > newNoAmount) {
             output = _noAmount - newNoAmount;
             fee = inputFee;
@@ -90,21 +107,36 @@ library AroundMath {
     }
     
     
-    // 计算出售代币（反向操作）
+    // 计算出售YES/NO代币的输出（获得抵押物）（反向操作）
     function _calculateSellOutput(
         IAroundMarket.Bet _bet,
         uint16 _feeRate,
-        uint256 _tokenAmount, // 要出售的代币数量
+        uint256 _sellAmount, // 要出售的代币数量
         uint256 _virtualLiquidity,
         uint256 _yesAmount, 
-        uint256 _noAmount
+        uint256 _noAmount,
+        uint256 _collateralBalance
     ) internal pure returns (uint256 output, uint128 fee) {
         if(_bet == IAroundMarket.Bet.Yes) {
             // 出售YES代币：换取抵押物
-            (output, fee) = _calculateYesSellOutput(_feeRate, _tokenAmount, _virtualLiquidity, _yesAmount, _noAmount);
+            (output, fee) = _calculateYesSellOutput(
+                _feeRate, 
+                _sellAmount, 
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount,
+                _collateralBalance
+            );
         } else if(_bet == IAroundMarket.Bet.No) {
             // 出售NO代币：换取抵押物
-            (output, fee) = _calculateNoSellOutput(_feeRate, _tokenAmount, _virtualLiquidity, _yesAmount, _noAmount);
+            (output, fee) = _calculateNoSellOutput(
+                _feeRate, 
+                _sellAmount, 
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount,
+                _collateralBalance
+            );
         } else {
             revert("Invalid bet");
         }
@@ -112,26 +144,27 @@ library AroundMath {
     
     function _calculateYesSellOutput(
         uint16 _feeRate,
-        uint256 _tokenAmount,
+        uint256 _sellAmount,
         uint256 _virtualLiquidity,
         uint256 _yesAmount, 
-        uint256 _noAmount
-    ) internal pure returns (uint256 output, uint128 fee) {
-        // 出售YES代币：YES增加，NO减少
-        uint256 k = (_yesAmount + _virtualLiquidity) * (_noAmount + _virtualLiquidity);
-        uint256 newYesAmount = _yesAmount + _tokenAmount;
+        uint256 _noAmount,
+        uint256 _collateralBalance
+    ) internal pure returns (uint256 collateralOutput, uint128 fee) {
+        // 出售YES代币：YES代币增加，抵押物减少
+        uint256 k = (_yesAmount + _virtualLiquidity) * (_collateralBalance + _virtualLiquidity);
+        uint256 newYesTokens = _yesAmount + _sellAmount;
         
-        // 计算新的NO数量：newNo = k / (newYes + virtual) - virtual
-        uint256 newNoAmount = (k / (newYesAmount + _virtualLiquidity)) - _virtualLiquidity;
+        // 计算新的抵押物数量：newCollateral = k / (newYesTokens + virtual) - virtual
+        uint256 newCollateralBalance = (k / (newYesTokens + _virtualLiquidity)) - _virtualLiquidity;
         
-        // 输出量（抵押物）= 原来的NO数量 - 新的NO数量
-        if (_noAmount > newNoAmount) {
-            uint256 grossOutput = _noAmount - newNoAmount;
+        // 输出量（抵押物）= 原来的抵押物数量 - 新的抵押物数量
+        if (_collateralBalance > newCollateralBalance) {
+            uint256 grossOutput = _collateralBalance - newCollateralBalance;
             // 计算出售费用（0.3%）
             fee = uint128((grossOutput * _feeRate) / FEE_DENOMINATOR);
-            output = grossOutput - fee;
+            collateralOutput = grossOutput - fee;
         } else {
-            output = 0;
+            collateralOutput = 0;
             fee = 0;
         }
     }
@@ -141,23 +174,24 @@ library AroundMath {
         uint256 _tokenAmount,
         uint256 _virtualLiquidity,
         uint256 _yesAmount, 
-        uint256 _noAmount
-    ) internal pure returns (uint256 output, uint128 fee) {
-        // 出售NO代币：NO增加，YES减少
-        uint256 k = (_yesAmount + _virtualLiquidity) * (_noAmount + _virtualLiquidity);
-        uint256 newNoAmount = _noAmount + _tokenAmount;
+        uint256 _noAmount,
+        uint256 _collateralBalance
+    ) internal pure returns (uint256 collateralOutput, uint128 fee) {
+        // 出售NO代币：NO代币增加，抵押物减少
+        uint256 k = (_noAmount + _virtualLiquidity) * (_collateralBalance + _virtualLiquidity);
+        uint256 newNoTokens = _noAmount + _tokenAmount;
         
-        // 计算新的YES数量：newYes = k / (newNo + virtual) - virtual
-        uint256 newYesAmount = (k / (newNoAmount + _virtualLiquidity)) - _virtualLiquidity;
+        // 计算新的抵押物数量：newCollateral = k / (newNoTokens + virtual) - virtual
+        uint256 newCollateralBalance = (k / (newNoTokens + _virtualLiquidity)) - _virtualLiquidity;
         
-        // 输出量（抵押物）= 原来的YES数量 - 新的YES数量
-        if (_yesAmount > newYesAmount) {
-            uint256 grossOutput = _yesAmount - newYesAmount;
-            // 计算出售费用
+        // 输出量（抵押物）= 原来的抵押物数量 - 新的抵押物数量
+        if (_collateralBalance > newCollateralBalance) {
+            uint256 grossOutput = _collateralBalance - newCollateralBalance;
+            // 计算出售费用（0.3%）
             fee = uint128((grossOutput * _feeRate) / FEE_DENOMINATOR);
-            output = grossOutput - fee;
+            collateralOutput = grossOutput - fee;
         } else {
-            output = 0;
+            collateralOutput = 0;
             fee = 0;
         }
     }
@@ -165,18 +199,19 @@ library AroundMath {
     // 计算当前价格（YES代币的概率）
     function _calculateYesPrice(
         uint256 _virtualLiquidity,
-        uint256 _yesAmount, 
-        uint256 _noAmount
+        uint256 _yesTokens, 
+        uint256 _noTokens,
+        uint256 _collateralBalance
     ) internal pure returns (uint256 price) {
-        if (_yesAmount == 0 && _noAmount == 0) {
+        if (_yesTokens == 0 && _noTokens == 0) {
             return 0.5e18; // 50% 概率，使用18位小数
         }
         
-        // 价格 = (no + virtual) / (yes + no + 2 * virtual)
-        uint256 numerator = _noAmount + _virtualLiquidity;
-        uint256 denominator = _yesAmount + _noAmount + 2 * _virtualLiquidity;
+        // 价格基于YES和NO代币的相对稀缺性
+        uint256 totalValue = _collateralBalance + 2 * _virtualLiquidity;
+        uint256 yesValue = (_yesTokens > 0) ? _collateralBalance * _noTokens / (_yesTokens + _noTokens) : 0;
         
-        return (numerator * 1e18) / denominator;
+        return (yesValue * 1e18) / totalValue;
     }
     
     // 计算购买滑点（包含费用）
@@ -186,14 +221,27 @@ library AroundMath {
         uint128 _inputAmount,
         uint256 _virtualLiquidity,
         uint256 _yesAmount, 
-        uint256 _noAmount
+        uint256 _noAmount,
+        uint256 _collateralBalance
     ) internal pure returns (uint256 _slippage) {
         uint256 spotPrice;
         uint256 effectivePrice;
         
         if (_bet == IAroundMarket.Bet.Yes) {
-            spotPrice = _calculateYesPrice(_virtualLiquidity, _yesAmount, _noAmount);
-            (uint256 output, ) = _calculateYesOutput(_feeRate, _inputAmount, _virtualLiquidity, _yesAmount, _noAmount);
+            spotPrice = _calculateYesPrice(
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount, 
+                _collateralBalance
+            );
+            (uint256 output, ) = _calculateYesOutput(
+                _feeRate, 
+                _inputAmount, 
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount,
+                _collateralBalance
+            );
             if (output > 0) {
                 // 有效价格包含费用
                 effectivePrice = (_inputAmount * 1e18) / output;
@@ -202,8 +250,20 @@ library AroundMath {
                 }
             }
         } else {
-            spotPrice = 1e18 - _calculateYesPrice(_virtualLiquidity, _yesAmount, _noAmount);
-            (uint256 output, ) = _calculateNoOutput(_feeRate, _inputAmount, _virtualLiquidity, _yesAmount, _noAmount);
+            spotPrice = 1e18 - _calculateYesPrice(
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount,
+                _collateralBalance
+            );
+            (uint256 output, ) = _calculateNoOutput(
+                _feeRate, 
+                _inputAmount, 
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount,
+                _collateralBalance
+            );
             if (output > 0) {
                 effectivePrice = (_inputAmount * 1e18) / output;
                 if (effectivePrice > spotPrice) {
@@ -222,14 +282,27 @@ library AroundMath {
         uint256 _sellAmount,
         uint256 _virtualLiquidity,
         uint256 _yesAmount, 
-        uint256 _noAmount
+        uint256 _noAmount,
+        uint256 _collateralBalance
     ) internal pure returns (uint256 _slippage) {
         uint256 spotPrice;
         uint256 effectivePrice;
         
         if (_bet == IAroundMarket.Bet.Yes) {
-            spotPrice = _calculateYesPrice(_virtualLiquidity, _yesAmount, _noAmount);
-            (uint256 output, ) = _calculateYesSellOutput(_feeRate, _sellAmount, _virtualLiquidity, _yesAmount, _noAmount);
+            spotPrice = _calculateYesPrice(
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount,
+                _collateralBalance
+            );
+            (uint256 output, ) = _calculateYesSellOutput(
+                _feeRate, 
+                _sellAmount, 
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount,
+                _collateralBalance
+            );
             if (output > 0 && _sellAmount > 0) {
                 // 有效价格 = 代币数量 / 输出抵押物数量
                 effectivePrice = (_sellAmount * 1e18) / output;
@@ -238,8 +311,20 @@ library AroundMath {
                 }
             }
         } else {
-            spotPrice = 1e18 - _calculateYesPrice(_virtualLiquidity, _yesAmount, _noAmount);
-            (uint256 output, ) = _calculateNoSellOutput(_feeRate, _sellAmount, _virtualLiquidity, _yesAmount, _noAmount);
+            spotPrice = 1e18 - _calculateYesPrice(
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount,
+                _collateralBalance
+            );
+            (uint256 output, ) = _calculateNoSellOutput(
+                _feeRate, 
+                _sellAmount, 
+                _virtualLiquidity, 
+                _yesAmount, 
+                _noAmount,
+                _collateralBalance
+            );
             if (output > 0 && _sellAmount > 0) {
                 effectivePrice = (_sellAmount * 1e18) / output;
                 if (spotPrice > effectivePrice) {
@@ -276,7 +361,7 @@ library AroundMath {
         uint256 _totalLp,
         uint256 _yesAmount,
         uint256 _noAmount,
-        uint128 _feeBalance
+        uint128 _feeAmount
     ) internal pure returns (uint128 collateralAmount, uint128 feeShare) {
         require(_totalLp > 0, "No liquidity provided");
         
@@ -287,7 +372,7 @@ library AroundMath {
         collateralAmount = uint128((shareRatio * (_yesAmount + _noAmount)) / 1e18);
         
         // 应得的手续费分成
-        feeShare = uint128((shareRatio * _feeBalance) / 1e18);
+        feeShare = uint128((shareRatio * _feeAmount) / 1e18);
     }
     
     // 计算流动性提供者的总价值
@@ -296,11 +381,11 @@ library AroundMath {
         uint256 _totalLp,
         uint256 _yesAmount,
         uint256 _noAmount,
-        uint128 _feeBalance
+        uint128 _feeAmount
     ) internal pure returns (uint256 totalValue) {
         if (_totalLp > 0) {
             uint256 shareRatio = (_lpShare * 1e18) / _totalLp;
-            totalValue = (shareRatio * (_yesAmount + _noAmount + _feeBalance)) / 1e18;
+            totalValue = (shareRatio * (_yesAmount + _noAmount + _feeAmount)) / 1e18;
         }
     }
 }

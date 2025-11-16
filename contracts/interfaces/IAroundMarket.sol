@@ -27,8 +27,8 @@ interface IAroundMarket {
     }
 
     struct UserPosition {
-        uint256 yesTokens;
-        uint256 noTokens;
+        uint256 yesBalance;
+        uint256 noBalance;
         uint256 lp;
     }
 }
