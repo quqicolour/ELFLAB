@@ -33,7 +33,9 @@ contract AroundMarket is IAroundMarket {
         uint64 _currentTime = uint64(block.timestamp);
         uint64 _endTime = _currentTime + _period;
         //TODO transfer to Collateral pool
-        IERC20(_collateral).safeTransferFrom(msg.sender, address(this), _collateralAmount);
+        if(_collateralAmount > 0){
+            IERC20(_collateral).safeTransferFrom(msg.sender, address(this), _collateralAmount);
+        }
         //TODO around
         marketInfo[marketId] = MarketInfo({
             result: Bet.Pending,
@@ -41,7 +43,7 @@ contract AroundMarket is IAroundMarket {
             startTime: _currentTime,
             endTime: _endTime,
             collateral: _collateral,
-            around: address(0),
+            around: address(this),
             creator: msg.sender,
             quest: _quest,
             resultData: ""
@@ -60,11 +62,11 @@ contract AroundMarket is IAroundMarket {
 
     function buy(Bet bet, uint128 amount, uint256 thisMarketId) external {
         require(amount > 0, "Input amount must be positive");
-        MarketInfo memory newMarketInfo = marketInfo[marketId];
+        MarketInfo memory newMarketInfo = marketInfo[thisMarketId];
         //Transfer fund to around
         IERC20(newMarketInfo.collateral).safeTransferFrom(msg.sender, newMarketInfo.around, amount);
         
-        // 计算输出数量和手续费
+        // Calculate the output quantity and handling fee
         (uint256 output, uint128 fee) = AroundMath._calculateOutput(
             bet,
             newMarketInfo.marketFee,
@@ -77,10 +79,10 @@ contract AroundMarket is IAroundMarket {
         
         require(output > 0, "Insufficient output");
         
-        // 计算净输入（扣除手续费）
+        // Calculate the net input (minus handling fees)
         (uint128 netInput, ) = AroundMath._calculateNetInput(newMarketInfo.marketFee, amount);
         
-        // 更新市场状态
+        // Update the market status
         if (bet == IAroundMarket.Bet.Yes) {
             liqudityInfo[thisMarketId].yesAmount -= output;
             liqudityInfo[thisMarketId].noAmount += netInput;
@@ -98,7 +100,7 @@ contract AroundMarket is IAroundMarket {
     function sell(Bet bet, uint256 amount, uint256 thisMarketId) external {
         require(amount > 0, "Token amount must be positive");
         
-        // 检查用户持仓
+        // Check the user's position
         if (bet == IAroundMarket.Bet.Yes) {
             require(userPosition[msg.sender][thisMarketId].yesBalance >= amount, "Insufficient YES tokens");
             userPosition[msg.sender][thisMarketId].yesBalance -= amount;
@@ -107,7 +109,7 @@ contract AroundMarket is IAroundMarket {
             userPosition[msg.sender][thisMarketId].noBalance -= amount;
         }
         
-        // 计算输出数量和手续费
+        // Calculate the output quantity and handling fee
         (uint256 output, uint128 fee) = AroundMath._calculateSellOutput(
             bet,
             marketInfo[thisMarketId].marketFee,
@@ -120,7 +122,7 @@ contract AroundMarket is IAroundMarket {
         
         require(output > 0, "Insufficient output");
         
-        // 更新市场状态
+        // Update the market status
         if (bet == IAroundMarket.Bet.Yes) {
             liqudityInfo[thisMarketId].yesAmount += amount;
             liqudityInfo[thisMarketId].noAmount -= output + fee;
@@ -132,7 +134,6 @@ contract AroundMarket is IAroundMarket {
         liqudityInfo[thisMarketId].totalLp -= (output + fee);
         liqudityInfo[thisMarketId].totalFee += fee;
         
-        // 转移抵押代币给用户
         IERC20(marketInfo[thisMarketId].collateral).safeTransfer(msg.sender, output);
     }
 
@@ -166,7 +167,7 @@ contract AroundMarket is IAroundMarket {
         require(block.timestamp + 1 hours < marketInfo[thisMarketId].endTime, "Market preparation is over.");
         require(lpShare > 0 && userPosition[msg.sender][thisMarketId].lp >= lpShare, "Invalid liquidity share");
         
-        // 计算应得的抵押代币和手续费分成
+        // Calculate the due share of collateral tokens and transaction fees
         (uint128 collateralAmount, uint128 feeShare) = AroundMath._calculateLiquidityWithdrawal(
             lpShare,
             liqudityInfo[thisMarketId].collateralAmount,
@@ -177,7 +178,7 @@ contract AroundMarket is IAroundMarket {
         
         require(collateralAmount > 0, "No collateral to withdraw");
         
-        // 计算应减少的YES和NO代币数量
+        // Calculate the number of YES and NO tokens that should be reduced
         (uint256 yesReduction, uint256 noReduction) = AroundMath._calculateLiquidityShares(
             lpShare,
             liqudityInfo[thisMarketId].totalLp,
@@ -185,21 +186,21 @@ contract AroundMarket is IAroundMarket {
             liqudityInfo[thisMarketId].noAmount
         );
         
-        // 更新流动性状态
+        // Update the liquidity status
         liqudityInfo[thisMarketId].yesAmount -= yesReduction;
         liqudityInfo[thisMarketId].noAmount -= noReduction;
         liqudityInfo[thisMarketId].collateralAmount -= collateralAmount;
         liqudityInfo[thisMarketId].totalLp -= lpShare;
         
-        // 更新手续费余额
+        // Update the balance of handling fee
         if (feeShare > 0) {
             liqudityInfo[thisMarketId].totalFee -= feeShare;
         }
         
-        // 更新用户持仓
+        // Update the user's position
         userPosition[msg.sender][thisMarketId].lp -= lpShare;
         
-        // 转移抵押代币和手续费分成给用户
+        // Transfer the collateral tokens and share the transaction fees with the users
         IERC20(marketInfo[thisMarketId].collateral).safeTransfer(msg.sender, collateralAmount + feeShare);
     }
 
@@ -208,18 +209,18 @@ contract AroundMarket is IAroundMarket {
         UserPosition memory position = userPosition[msg.sender][thisMarketId];
         require(position.yesBalance > 0 || position.noBalance > 0 || position.lp > 0, "No position");
         
-        // 计算代币收益
-        if (marketInfo[thisMarketId].result == Bet.Yes) { // YES获胜
+        // Calculate the token earnings
+        if (marketInfo[thisMarketId].result == Bet.Yes) { 
             if (position.yesBalance > 0) {
                 winnings = (position.yesBalance * liqudityInfo[thisMarketId].collateralAmount) / liqudityInfo[thisMarketId].yesAmount;
             }
-        } else { // NO获胜
+        } else { // NO wins
             if (position.noBalance > 0) {
                 winnings = (position.noBalance * liqudityInfo[thisMarketId].collateralAmount) / liqudityInfo[thisMarketId].noAmount;
             }
         }
         
-        // 流动性提供者收益（按比例赎回）
+        // Liquidity provider returns (redemption proportionally)
         if (position.lp > 0) {
             (uint256 liquidityValue, ) = AroundMath._calculateLiquidityWithdrawal(
                 position.lp,
@@ -234,11 +235,11 @@ contract AroundMarket is IAroundMarket {
         require(winnings > 0, "No winnings");
         IERC20(marketInfo[thisMarketId].collateral).safeTransfer(msg.sender, winnings);
         
-        // 清空用户持仓
+        // clear
         delete userPosition[msg.sender][thisMarketId];
     }
     
-    // 查看流动性价值
+    // View liquidity value
     function getLiquidityValue(uint256 thisMarketId, address _user) public view returns (uint256 totalValue) {
         UserPosition memory position = userPosition[_user][thisMarketId];
         if (position.lp == 0) return 0;
@@ -252,7 +253,7 @@ contract AroundMarket is IAroundMarket {
         );
     }
     
-    // 预估移除流动性
+    // Estimated removal of liquidity
     function estimateLiquidityRemoval(uint256 thisMarketId, uint256 lpShare) public view returns (
         uint256 collateralAmount, 
         uint256 feeShare,
@@ -271,7 +272,6 @@ contract AroundMarket is IAroundMarket {
         totalValue = collateralAmount + feeShare;
     }
     
-    // 其他查看函数保持不变...
     function getYesPrice(uint256 thisMarketId) public view returns (uint256) {
         return AroundMath._calculateYesPrice(
             liqudityInfo[thisMarketId].virtualLiquidity,
