@@ -13,7 +13,7 @@ async function main() {
   const MARKET_FEE = 300; // 3%
   const PERIOD = 7 * 24 * 60 * 60; // 7 days
   const VIRTUAL_LIQUIDITY = ethers.parseEther("1000");
-  const COLLATERAL_AMOUNT = ethers.parseEther("1000");
+  const COLLATERAL_AMOUNT = 0;
   const QUEST = "Will ETH price reach $5000 by the end of 2024?";
 
   console.log("\n📦 Step 1: Deploying MockERC20 token...");
@@ -58,7 +58,7 @@ async function main() {
   console.log(`✅ Market created successfully! Market ID: 0`, createTx.hash);
   
   // 验证市场信息
-  const marketInfo = await market.marketInfo(0);
+  let marketInfo = await market.marketInfo(0);
   console.log(`📊 Market Info:`);
   console.log(`   - Creator: ${marketInfo.creator}`);
   console.log(`   - Collateral: ${marketInfo.collateral}`);
@@ -66,11 +66,7 @@ async function main() {
   console.log(`   - Market Fee: ${marketInfo.marketFee} basis points`);
   console.log(`   - End Time: ${marketInfo.endTime}`);
 
-  const liquidityInfo = await market.liqudityInfo(0);
-  console.log(`💧 Liquidity Info:`);
-  console.log(`   - Virtual Liquidity: ${ethers.formatEther(liquidityInfo.virtualLiquidity)}`);
-  console.log(`   - Collateral Amount: ${ethers.formatEther(liquidityInfo.collateralAmount)}`);
-  console.log(`   - Total LP: ${ethers.formatEther(liquidityInfo.totalLp)}`);
+  let liquidityInfo = await market.liqudityInfo(0);
 
   console.log("\n🎯 Step 4: Testing Price Functions...");
   
@@ -83,14 +79,19 @@ async function main() {
   console.log("\n🎯 Step 5: Testing Liquidity Operations...");
   
   // 用户1添加流动性
+  const approveMax = ethers.parseEther("100000000000000000000000");
   const user1LiquidityAmount = ethers.parseEther("500");
-  await token.connect(user1).approve(marketAddress, user1LiquidityAmount);
+  await token.connect(user1).approve(marketAddress, approveMax);
   console.log(`✅ User1 approved ${ethers.formatEther(user1LiquidityAmount)} TEST tokens`);
   
   const addLiqTx = await market.connect(user1).addLiquidity(user1LiquidityAmount, 0);
   await addLiqTx.wait();
   console.log(`✅ User1 added ${ethers.formatEther(user1LiquidityAmount)} liquidity`);
-  
+
+  const addLiq2Tx = await market.connect(user1).addLiquidity(user1LiquidityAmount, 0);
+  await addLiq2Tx.wait();
+  console.log(`✅ User1 added ${ethers.formatEther(user1LiquidityAmount)} liquidity`);
+
   // 检查用户仓位
   const user1Position = await market.userPosition(user1.address, 0);
   console.log(`📊 User1 Position after adding liquidity:`);
@@ -112,6 +113,20 @@ async function main() {
   const buyYesTx = await market.connect(user2).buy(1, user2BuyAmount, 0); // 1 = Bet.Yes
   await buyYesTx.wait();
   console.log(`✅ User2 bought ${ethers.formatEther(user2BuyAmount)} worth of YES tokens`);
+
+  let finalYesPrice = await market.getYesPrice(0);
+  let finalNoPrice = await market.getNoPrice(0);
+  console.log(`📈 Final YES Price: ${ethers.formatEther(finalYesPrice)}`);
+  console.log(`📉 Final NO Price: ${ethers.formatEther(finalNoPrice)}`);
+
+  liquidityInfo = await market.liqudityInfo(0);
+  console.log(`💧 Liquidity Info:`);
+  console.log(`   - Virtual Liquidity: ${ethers.formatEther(liquidityInfo.virtualLiquidity)}`);
+  console.log(`   - Collateral Amount: ${ethers.formatEther(liquidityInfo.collateralAmount)}`);
+  console.log(`   - totalFee: ${ethers.formatEther(liquidityInfo.totalFee)}`);
+  console.log(`   - Total LP: ${ethers.formatEther(liquidityInfo.totalLp)}`);
+  console.log(`   - yesAmount: ${ethers.formatEther(liquidityInfo.yesAmount)}`);
+  console.log(`   - noAmount: ${ethers.formatEther(liquidityInfo.noAmount)}`);
   
   const user2PositionAfterBuy = await market.userPosition(user2.address, 0);
   console.log(`📊 User2 Position after buying YES:`);
@@ -119,12 +134,26 @@ async function main() {
   console.log(`   - NO Balance: ${ethers.formatEther(user2PositionAfterBuy.noBalance)}`);
 
   // 用户2购买NO
-  const user2BuyNoAmount = ethers.parseEther("50");
+  const user2BuyNoAmount = ethers.parseEther("125");
   await token.connect(user2).approve(marketAddress, user2BuyNoAmount);
   
-  const buyNoTx = await market.connect(user2).buy(2, user2BuyNoAmount, 0); // 2 = Bet.No
-  await buyNoTx.wait();
-  console.log(`✅ User2 bought ${ethers.formatEther(user2BuyNoAmount)} worth of NO tokens`);
+  // const buyNoTx = await market.connect(user2).buy(2, user2BuyNoAmount, 0); // 2 = Bet.No
+  // await buyNoTx.wait();
+  // console.log(`✅ User2 bought ${ethers.formatEther(user2BuyNoAmount)} worth of NO tokens`);
+
+  finalYesPrice = await market.getYesPrice(0);
+  finalNoPrice = await market.getNoPrice(0);
+  console.log(`📈 Final YES Price: ${ethers.formatEther(finalYesPrice)}`);
+  console.log(`📉 Final NO Price: ${ethers.formatEther(finalNoPrice)}`);
+
+  liquidityInfo = await market.liqudityInfo(0);
+  console.log(`💧 Liquidity Info:`);
+  console.log(`   - Virtual Liquidity: ${ethers.formatEther(liquidityInfo.virtualLiquidity)}`);
+  console.log(`   - Collateral Amount: ${ethers.formatEther(liquidityInfo.collateralAmount)}`);
+  console.log(`   - totalFee: ${ethers.formatEther(liquidityInfo.totalFee)}`);
+  console.log(`   - Total LP: ${ethers.formatEther(liquidityInfo.totalLp)}`);
+  console.log(`   - yesAmount: ${ethers.formatEther(liquidityInfo.yesAmount)}`);
+  console.log(`   - noAmount: ${ethers.formatEther(liquidityInfo.noAmount)}`);
   
   const user2PositionFinal = await market.userPosition(user2.address, 0);
   console.log(`📊 User2 Final Position:`);
@@ -133,11 +162,28 @@ async function main() {
 
   console.log("\n🎯 Step 7: Testing Sell Operations...");
   
-  // 用户2出售部分YES
-  const sellYesAmount = user2PositionFinal.yesBalance / 2n;
+  // 用户2出售全部YES
+  const balance1 = await token.balanceOf(user2.address);
+  const sellYesAmount = user2PositionFinal.yesBalance;
   const sellYesTx = await market.connect(user2).sell(1, sellYesAmount, 0);
   await sellYesTx.wait();
   console.log(`✅ User2 sold ${ethers.formatEther(sellYesAmount)} YES tokens`);
+  const balance2 = await token.balanceOf(user2.address);
+  console.log(`💰 User1 received ${ethers.formatEther(balance2 - balance1)}`);
+
+  finalYesPrice = await market.getYesPrice(0);
+  finalNoPrice = await market.getNoPrice(0);
+  console.log(`📈 Final YES Price: ${ethers.formatEther(finalYesPrice)}`);
+  console.log(`📉 Final NO Price: ${ethers.formatEther(finalNoPrice)}`);
+
+  liquidityInfo = await market.liqudityInfo(0);
+  console.log(`💧 Liquidity Info:`);
+  console.log(`   - Virtual Liquidity: ${ethers.formatEther(liquidityInfo.virtualLiquidity)}`);
+  console.log(`   - Collateral Amount: ${ethers.formatEther(liquidityInfo.collateralAmount)}`);
+  console.log(`   - totalFee: ${ethers.formatEther(liquidityInfo.totalFee)}`);
+  console.log(`   - Total LP: ${ethers.formatEther(liquidityInfo.totalLp)}`);
+  console.log(`   - yesAmount: ${ethers.formatEther(liquidityInfo.yesAmount)}`);
+  console.log(`   - noAmount: ${ethers.formatEther(liquidityInfo.noAmount)}`);
   
   const user2PositionAfterSell = await market.userPosition(user2.address, 0);
   console.log(`📊 User2 Position after selling YES:`);
@@ -153,6 +199,11 @@ async function main() {
   const removeLiqTx = await market.connect(user1).removeLiquidity(0, removeLiquidityAmount);
   await removeLiqTx.wait();
   console.log(`✅ User1 removed ${ethers.formatEther(removeLiquidityAmount)} liquidity`);
+
+  finalYesPrice = await market.getYesPrice(0);
+  finalNoPrice = await market.getNoPrice(0);
+  console.log(`📈 Final YES Price: ${ethers.formatEther(finalYesPrice)}`);
+  console.log(`📉 Final NO Price: ${ethers.formatEther(finalNoPrice)}`);
   
   const user1BalanceAfter = await token.balanceOf(user1.address);
   const profit = user1BalanceAfter - user1BalanceBefore;
@@ -182,8 +233,8 @@ async function main() {
   console.log(`   - Total Fee: ${ethers.formatEther(finalLiquidityInfo.totalFee)}`);
   console.log(`   - Collateral Amount: ${ethers.formatEther(finalLiquidityInfo.collateralAmount)}`);
 
-  const finalYesPrice = await market.getYesPrice(0);
-  const finalNoPrice = await market.getNoPrice(0);
+  finalYesPrice = await market.getYesPrice(0);
+  finalNoPrice = await market.getNoPrice(0);
   console.log(`📈 Final YES Price: ${ethers.formatEther(finalYesPrice)}`);
   console.log(`📉 Final NO Price: ${ethers.formatEther(finalNoPrice)}`);
 

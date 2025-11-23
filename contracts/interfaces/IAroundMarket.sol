@@ -3,10 +3,10 @@ pragma solidity ^0.8.23;
 
 interface IAroundMarket {
 
-    enum Bet{Pending, Yes, No}
+    enum Result{Pending, Yes, No}
 
     struct MarketInfo{
-        Bet result;
+        Result result;
         uint16 marketFee;
         uint64 startTime;
         uint64 endTime;

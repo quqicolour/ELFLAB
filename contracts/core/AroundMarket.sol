@@ -38,7 +38,7 @@ contract AroundMarket is IAroundMarket {
         }
         //TODO around
         marketInfo[marketId] = MarketInfo({
-            result: Bet.Pending,
+            result: Result.Pending,
             marketFee: _marketFee,
             startTime: _currentTime,
             endTime: _endTime,
@@ -60,7 +60,7 @@ contract AroundMarket is IAroundMarket {
     }
 
 
-    function buy(Bet bet, uint128 amount, uint256 thisMarketId) external {
+    function buy(Result bet, uint128 amount, uint256 thisMarketId) external {
         require(amount > 0, "Input amount must be positive");
         MarketInfo memory newMarketInfo = marketInfo[thisMarketId];
         //Transfer fund to around
@@ -83,25 +83,23 @@ contract AroundMarket is IAroundMarket {
         (uint128 netInput, ) = AroundMath._calculateNetInput(newMarketInfo.marketFee, amount);
         
         // Update the market status
-        if (bet == IAroundMarket.Bet.Yes) {
-            liqudityInfo[thisMarketId].yesAmount -= output;
-            liqudityInfo[thisMarketId].noAmount += netInput;
+        if (bet == IAroundMarket.Result.Yes) {
+            liqudityInfo[thisMarketId].yesAmount += output;
             userPosition[msg.sender][thisMarketId].yesBalance += output;
         } else {
-            liqudityInfo[thisMarketId].noAmount -= output;
-            liqudityInfo[thisMarketId].yesAmount += netInput;
+            liqudityInfo[thisMarketId].noAmount += output;
             userPosition[msg.sender][thisMarketId].noBalance += output;
         }
         
-        liqudityInfo[thisMarketId].totalLp += netInput;
+        liqudityInfo[thisMarketId].collateralAmount += netInput;
         liqudityInfo[thisMarketId].totalFee += fee;
     }
 
-    function sell(Bet bet, uint256 amount, uint256 thisMarketId) external {
+    function sell(Result bet, uint256 amount, uint256 thisMarketId) external {
         require(amount > 0, "Token amount must be positive");
         
         // Check the user's position
-        if (bet == IAroundMarket.Bet.Yes) {
+        if (bet == IAroundMarket.Result.Yes) {
             require(userPosition[msg.sender][thisMarketId].yesBalance >= amount, "Insufficient YES tokens");
             userPosition[msg.sender][thisMarketId].yesBalance -= amount;
         } else {
@@ -123,15 +121,13 @@ contract AroundMarket is IAroundMarket {
         require(output > 0, "Insufficient output");
         
         // Update the market status
-        if (bet == IAroundMarket.Bet.Yes) {
-            liqudityInfo[thisMarketId].yesAmount += amount;
-            liqudityInfo[thisMarketId].noAmount -= output + fee;
+        if (bet == IAroundMarket.Result.Yes) {
+            liqudityInfo[thisMarketId].yesAmount -= amount;
         } else {
-            liqudityInfo[thisMarketId].noAmount += amount;
-            liqudityInfo[thisMarketId].yesAmount -= output + fee;
+            liqudityInfo[thisMarketId].noAmount -= amount;
         }
         
-        liqudityInfo[thisMarketId].totalLp -= (output + fee);
+        liqudityInfo[thisMarketId].collateralAmount -= uint128(output + fee);
         liqudityInfo[thisMarketId].totalFee += fee;
         
         IERC20(marketInfo[thisMarketId].collateral).safeTransfer(msg.sender, output);
@@ -150,15 +146,21 @@ contract AroundMarket is IAroundMarket {
             liqudityInfo[thisMarketId].yesAmount,
             liqudityInfo[thisMarketId].noAmount
         );
+
+        uint256 lpAmount = AroundMath._calculateSharesToMint(
+            amount,
+            liqudityInfo[thisMarketId].totalLp,
+            liqudityInfo[thisMarketId].collateralAmount
+        );
         
         // Update market state
         liqudityInfo[thisMarketId].yesAmount += yesShare;
         liqudityInfo[thisMarketId].noAmount += noShare;
         liqudityInfo[thisMarketId].collateralAmount += amount;
-        liqudityInfo[thisMarketId].totalLp += amount;
+        liqudityInfo[thisMarketId].totalLp += lpAmount;
         
         // Update user position
-        userPosition[msg.sender][thisMarketId].lp += amount;
+        userPosition[msg.sender][thisMarketId].lp += lpAmount;
         userPosition[msg.sender][thisMarketId].yesBalance += yesShare;
         userPosition[msg.sender][thisMarketId].noBalance += noShare;
     }
@@ -210,7 +212,7 @@ contract AroundMarket is IAroundMarket {
         require(position.yesBalance > 0 || position.noBalance > 0 || position.lp > 0, "No position");
         
         // Calculate the token earnings
-        if (marketInfo[thisMarketId].result == Bet.Yes) { 
+        if (marketInfo[thisMarketId].result == Result.Yes) { 
             if (position.yesBalance > 0) {
                 winnings = (position.yesBalance * liqudityInfo[thisMarketId].collateralAmount) / liqudityInfo[thisMarketId].yesAmount;
             }
@@ -274,10 +276,10 @@ contract AroundMarket is IAroundMarket {
     
     function getYesPrice(uint256 thisMarketId) public view returns (uint256) {
         return AroundMath._calculateYesPrice(
-            liqudityInfo[thisMarketId].virtualLiquidity,
             liqudityInfo[thisMarketId].yesAmount,
             liqudityInfo[thisMarketId].noAmount,
-            liqudityInfo[thisMarketId].collateralAmount
+            liqudityInfo[thisMarketId].virtualLiquidity,
+            marketInfo[thisMarketId].result
         );
     }
     
