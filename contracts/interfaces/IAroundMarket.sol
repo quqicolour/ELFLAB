@@ -19,7 +19,8 @@ interface IAroundMarket {
 
     struct LiqudityInfo {
         uint128 virtualLiquidity;
-        uint128 collateralAmount;
+        uint128 tradeCollateralAmount;
+        uint128 lpCollateralAmount;
         uint128 totalFee;
         uint256 totalLp;
         uint256 yesAmount;
@@ -30,5 +31,6 @@ interface IAroundMarket {
         uint256 yesBalance;
         uint256 noBalance;
         uint256 lp;
+        uint128 collateralAmount;
     }
 }

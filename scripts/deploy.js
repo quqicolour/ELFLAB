@@ -10,9 +10,9 @@ async function main() {
   console.log(`👤 User2 address: ${user2.address}`);
 
   // 部署参数
-  const MARKET_FEE = 300; // 3%
+  const MARKET_FEE = 600; // 0.3%
   const PERIOD = 7 * 24 * 60 * 60; // 7 days
-  const VIRTUAL_LIQUIDITY = ethers.parseEther("1000");
+  const VIRTUAL_LIQUIDITY = ethers.parseEther("100000");
   const COLLATERAL_AMOUNT = 0;
   const QUEST = "Will ETH price reach $5000 by the end of 2024?";
 
@@ -70,8 +70,8 @@ async function main() {
 
   console.log("\n🎯 Step 4: Testing Price Functions...");
   
-  const yesPrice = await market.getYesPrice(0);
-  const noPrice = await market.getNoPrice(0);
+  let yesPrice = await market.getYesPrice(0);
+  let noPrice = await market.getNoPrice(0);
   console.log(`📈 YES Price: ${ethers.formatEther(yesPrice)}`);
   console.log(`📉 NO Price: ${ethers.formatEther(noPrice)}`);
   console.log(`✅ Price sum: ${ethers.formatEther(yesPrice + noPrice)} (should be ~1.0)`);
@@ -95,13 +95,27 @@ async function main() {
   // 检查用户仓位
   const user1Position = await market.userPosition(user1.address, 0);
   console.log(`📊 User1 Position after adding liquidity:`);
-  console.log(`   - LP: ${ethers.formatEther(user1Position.lp)}`);
-  console.log(`   - YES Balance: ${ethers.formatEther(user1Position.yesBalance)}`);
-  console.log(`   - NO Balance: ${ethers.formatEther(user1Position.noBalance)}`);
+  console.log(`   - User1 LP: ${ethers.formatEther(user1Position.lp)}`);
+  console.log(`   - User1 YES Balance: ${ethers.formatEther(user1Position.yesBalance)}`);
+  console.log(`   - User1 NO Balance: ${ethers.formatEther(user1Position.noBalance)}`);
   
   // 检查流动性价值
   const liquidityValue = await market.getLiquidityValue(0, user1.address);
   console.log(`💰 User1 Liquidity Value: ${ethers.formatEther(liquidityValue)} TEST`);
+
+  liquidityInfo = await market.liqudityInfo(0);
+  console.log(`💧 Liquidity Info:`);
+  console.log(`   - Virtual Liquidity: ${ethers.formatEther(liquidityInfo.virtualLiquidity)}`);
+  console.log(`   - Collateral Amount: ${ethers.formatEther(liquidityInfo.collateralAmount)}`);
+  console.log(`   - totalFee: ${ethers.formatEther(liquidityInfo.totalFee)}`);
+  console.log(`   - Total LP: ${ethers.formatEther(liquidityInfo.totalLp)}`);
+  console.log(`   - yesAmount: ${ethers.formatEther(liquidityInfo.yesAmount)}`);
+  console.log(`   - noAmount: ${ethers.formatEther(liquidityInfo.noAmount)}`);
+
+  yesPrice = await market.getYesPrice(0);
+  noPrice = await market.getNoPrice(0);
+  console.log(`📈 YES Price: ${ethers.formatEther(yesPrice)}`);
+  console.log(`📉 NO Price: ${ethers.formatEther(noPrice)}`);
 
   console.log("\n🎯 Step 6: Testing Buy Operations...");
   
