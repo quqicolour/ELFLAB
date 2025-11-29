@@ -12,7 +12,7 @@ async function main() {
   // 部署参数
   const MARKET_FEE = 600; // 0.3%
   const PERIOD = 7 * 24 * 60 * 60; // 7 days
-  const VIRTUAL_LIQUIDITY = ethers.parseEther("100000");
+  const VIRTUAL_LIQUIDITY = ethers.parseEther("1000");
   const COLLATERAL_AMOUNT = 0;
   const QUEST = "Will ETH price reach $5000 by the end of 2024?";
 
@@ -106,7 +106,8 @@ async function main() {
   liquidityInfo = await market.liqudityInfo(0);
   console.log(`💧 Liquidity Info:`);
   console.log(`   - Virtual Liquidity: ${ethers.formatEther(liquidityInfo.virtualLiquidity)}`);
-  console.log(`   - Collateral Amount: ${ethers.formatEther(liquidityInfo.collateralAmount)}`);
+  console.log(`   - lpCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.lpCollateralAmount)}`);
+  console.log(`   - tradeCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.tradeCollateralAmount)}`);
   console.log(`   - totalFee: ${ethers.formatEther(liquidityInfo.totalFee)}`);
   console.log(`   - Total LP: ${ethers.formatEther(liquidityInfo.totalLp)}`);
   console.log(`   - yesAmount: ${ethers.formatEther(liquidityInfo.yesAmount)}`);
@@ -136,7 +137,8 @@ async function main() {
   liquidityInfo = await market.liqudityInfo(0);
   console.log(`💧 Liquidity Info:`);
   console.log(`   - Virtual Liquidity: ${ethers.formatEther(liquidityInfo.virtualLiquidity)}`);
-  console.log(`   - Collateral Amount: ${ethers.formatEther(liquidityInfo.collateralAmount)}`);
+  console.log(`   - lpCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.lpCollateralAmount)}`);
+  console.log(`   - tradeCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.tradeCollateralAmount)}`);
   console.log(`   - totalFee: ${ethers.formatEther(liquidityInfo.totalFee)}`);
   console.log(`   - Total LP: ${ethers.formatEther(liquidityInfo.totalLp)}`);
   console.log(`   - yesAmount: ${ethers.formatEther(liquidityInfo.yesAmount)}`);
@@ -163,7 +165,8 @@ async function main() {
   liquidityInfo = await market.liqudityInfo(0);
   console.log(`💧 Liquidity Info:`);
   console.log(`   - Virtual Liquidity: ${ethers.formatEther(liquidityInfo.virtualLiquidity)}`);
-  console.log(`   - Collateral Amount: ${ethers.formatEther(liquidityInfo.collateralAmount)}`);
+  console.log(`   - lpCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.lpCollateralAmount)}`);
+  console.log(`   - tradeCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.tradeCollateralAmount)}`);
   console.log(`   - totalFee: ${ethers.formatEther(liquidityInfo.totalFee)}`);
   console.log(`   - Total LP: ${ethers.formatEther(liquidityInfo.totalLp)}`);
   console.log(`   - yesAmount: ${ethers.formatEther(liquidityInfo.yesAmount)}`);
@@ -193,7 +196,8 @@ async function main() {
   liquidityInfo = await market.liqudityInfo(0);
   console.log(`💧 Liquidity Info:`);
   console.log(`   - Virtual Liquidity: ${ethers.formatEther(liquidityInfo.virtualLiquidity)}`);
-  console.log(`   - Collateral Amount: ${ethers.formatEther(liquidityInfo.collateralAmount)}`);
+  console.log(`   - lpCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.lpCollateralAmount)}`);
+  console.log(`   - tradeCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.tradeCollateralAmount)}`);
   console.log(`   - totalFee: ${ethers.formatEther(liquidityInfo.totalFee)}`);
   console.log(`   - Total LP: ${ethers.formatEther(liquidityInfo.totalLp)}`);
   console.log(`   - yesAmount: ${ethers.formatEther(liquidityInfo.yesAmount)}`);
@@ -232,9 +236,7 @@ async function main() {
   console.log("\n🎯 Step 9: Testing Estimation Functions...");
   
   // 测试流动性移除预估
-  const estimation = await market.estimateLiquidityRemoval(0, user1PositionFinal.lp);
-  console.log(`📊 Liquidity Removal Estimation for remaining LP:`);
-  console.log(`   - Collateral Amount: ${ethers.formatEther(estimation.collateralAmount)}`);
+  const estimation = await market.connect(user1).estimateLiquidityRemoval(0, user1PositionFinal.lp);
   console.log(`   - Fee Share: ${ethers.formatEther(estimation.feeShare)}`);
   console.log(`   - Total Value: ${ethers.formatEther(estimation.totalValue)}`);
 
@@ -245,7 +247,8 @@ async function main() {
   console.log(`   - YES Amount: ${ethers.formatEther(finalLiquidityInfo.yesAmount)}`);
   console.log(`   - NO Amount: ${ethers.formatEther(finalLiquidityInfo.noAmount)}`);
   console.log(`   - Total Fee: ${ethers.formatEther(finalLiquidityInfo.totalFee)}`);
-  console.log(`   - Collateral Amount: ${ethers.formatEther(finalLiquidityInfo.collateralAmount)}`);
+  console.log(`   - lpCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.lpCollateralAmount)}`);
+  console.log(`   - tradeCollateralAmount Amount: ${ethers.formatEther(liquidityInfo.tradeCollateralAmount)}`);
 
   finalYesPrice = await market.getYesPrice(0);
   finalNoPrice = await market.getNoPrice(0);

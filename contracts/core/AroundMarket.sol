@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.23;
 
-import {IAroundMarket} from "../interfaces/IAroundMarket.sol";
 import {AroundMath} from "../libraries/AroundMath.sol";
+import {IAroundMarket} from "../interfaces/IAroundMarket.sol";
+import {IAroundPool} from "../interfaces/IAroundPool.sol";
+import {IInsurancePool} from "../interfaces/IInsurancePool.sol";
+import {IAroundPoolFactory} from "../interfaces/IAroundPoolFactory.sol";
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract AroundMarket is IAroundMarket {
 
@@ -12,45 +16,105 @@ contract AroundMarket is IAroundMarket {
     uint256 public marketId;
 
     address public oracle;
+    address public elfiNFT;
+    address public feeReceiver;
+    address public aroundPoolFactory;
+    bool public isInitialize;
 
-    mapping(address => bool) public validToken;
+    uint16 private constant DefaultOfficialFee = 150;
+    uint16 private constant DefaultLiquidityFee = 150;
+    uint16 private constant DefaultOracleFee = 100;
+    uint16 private constant DefaultLuckyFee = 100;
+    uint16 private constant DefaultInsuranceFee = 100;
+    uint16 private constant DefaultTotalFee = 600;
+    uint32 private constant RATE = 100_000;
 
-    mapping(uint256 => MarketInfo) public marketInfo;
+    mapping(address => TokenInfo) public tokenInfo;
 
-    mapping(uint256 => LiqudityInfo) public liqudityInfo;
+    mapping(uint256 => MarketInfo) private marketInfo;
+
+    mapping(uint256 => LiqudityInfo) private liqudityInfo;
 
     mapping(address => mapping(uint256 => UserPosition)) public userPosition;
 
+    mapping(uint256 => FeeInfo) public feeInfo;
+
+    function initialize(address _aroundPoolFactory) external {
+        require(isInitialize == false, "Already initialize");
+        aroundPoolFactory = _aroundPoolFactory;
+        isInitialize = true;
+    }
+
+    function setFeeInfo(
+        uint16 newOfficialFee,
+        uint16 newLuckyFee,
+        uint16 newOracleFee,
+        uint16 newInsuranceFee,
+        uint16 newLiquidityFee,
+        uint256 thisId
+    ) external {
+        feeInfo[thisId].officialFee =  newOfficialFee;
+        feeInfo[thisId].luckyFee = newLuckyFee;
+        feeInfo[thisId].oracleFee = newOracleFee;
+        feeInfo[thisId].insuranceFee = newInsuranceFee;
+        feeInfo[thisId].liquidityFee = newLiquidityFee;
+        emit SetFeeInfo(thisId);
+    }
+
+    function batchAddTokenInfo(
+        address[] calldata tokens, 
+        bool[] calldata status,
+        uint128[] calldata amounts
+    ) external {
+        unchecked {
+            for(uint256 i; i<tokens.length; i++) {
+                tokenInfo[tokens[i]] = TokenInfo({
+                    valid: status[i],
+                    guaranteeAmount: amounts[i]
+                });
+            }
+        }
+    }
+
     function createMarket(
-        uint16 _marketFee,
         uint32 _period,
         uint128 _virtualLiquidity,
-        uint128 _collateralAmount,
         address _collateral,
         string calldata _quest
     ) external {
         uint64 _currentTime = uint64(block.timestamp);
         uint64 _endTime = _currentTime + _period;
-        //TODO transfer to Collateral pool
-        if(_collateralAmount > 0){
-            IERC20(_collateral).safeTransferFrom(msg.sender, address(this), _collateralAmount);
+        uint128 guaranteeAmount = tokenInfo[_collateral].guaranteeAmount;
+        require(tokenInfo[_collateral].valid, "Invalid token");
+        //create fee
+        if(guaranteeAmount > 0){
+            IERC20(_collateral).safeTransferFrom(msg.sender, feeReceiver, 100 * 10 ** IERC20Metadata(_collateral).decimals());
         }
-        //TODO around
+
+        QuestInfo memory newQuestInfo = QuestInfo({
+            quest: _quest,
+            resultData: ""
+        });
+        feeInfo[marketId] = FeeInfo({
+            officialFee: DefaultOfficialFee,
+            luckyFee: DefaultLiquidityFee,
+            oracleFee: DefaultOracleFee,
+            liquidityFee: DefaultLuckyFee,
+            insuranceFee: DefaultInsuranceFee,
+            totalFee: DefaultTotalFee
+        });
         marketInfo[marketId] = MarketInfo({
             result: Result.Pending,
-            marketFee: _marketFee,
             startTime: _currentTime,
             endTime: _endTime,
             collateral: _collateral,
-            around: address(this),
             creator: msg.sender,
-            quest: _quest,
-            resultData: ""
+            questInfo: newQuestInfo
         });
         liqudityInfo[marketId] = LiqudityInfo({
             virtualLiquidity: _virtualLiquidity,
             tradeCollateralAmount: 0,
-            lpCollateralAmount: _collateralAmount,
+            lpCollateralAmount: 0,
             totalLp: 0,
             totalFee: 0,
             yesAmount: 0,
@@ -61,17 +125,35 @@ contract AroundMarket is IAroundMarket {
 
     function buy(Result bet, uint128 amount, uint256 thisMarketId) external {
         require(amount > 0, "Input amount must be positive");
-        MarketInfo memory newMarketInfo = marketInfo[thisMarketId];
-        //Transfer fund to around
-        IERC20(newMarketInfo.collateral).safeTransferFrom(msg.sender, newMarketInfo.around, amount);
-        
+        // Transfer fund
+        {
+            uint128 oracleFee = amount * feeInfo[thisMarketId].oracleFee / RATE;
+            uint128 officialFee = amount * feeInfo[thisMarketId].officialFee / RATE;
+            uint128 insuranceFee = amount * feeInfo[thisMarketId].insuranceFee / RATE;
+            uint128 luckyFee = amount * feeInfo[thisMarketId].luckyFee / RATE;
+            uint128 remainAmount = amount - oracleFee - officialFee - insuranceFee - luckyFee;
+            //Oracle fee
+            IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(msg.sender, oracle, oracleFee);
+            //Official fee
+            IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(msg.sender, feeReceiver, officialFee);
+            //Insurance fee
+            IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(msg.sender, _getPoolInfo(thisMarketId).insurancePool, insuranceFee);
+            //Transfer fund to around
+            IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(
+                msg.sender, 
+                _getPoolInfo(thisMarketId).aroundPool, 
+                remainAmount + luckyFee
+            );
+            IAroundPool(_getPoolInfo(thisMarketId).aroundPool).deposite(remainAmount, luckyFee);
+        }
+
         // Calculate the net input (minus handling fees)
-        (uint128 netInput, ) = AroundMath._calculateNetInput(newMarketInfo.marketFee, amount);
+        (uint128 netInput, ) = AroundMath._calculateNetInput(feeInfo[thisMarketId].totalFee, amount);
         
         // Calculate the output quantity and handling fee
         (uint256 output, uint128 fee) = AroundMath._calculateBuyOutput(
             bet,
-            newMarketInfo.marketFee,
+            feeInfo[thisMarketId].totalFee,
             amount,
             liqudityInfo[thisMarketId].virtualLiquidity,
             liqudityInfo[thisMarketId].tradeCollateralAmount + liqudityInfo[thisMarketId].lpCollateralAmount,
@@ -97,7 +179,20 @@ contract AroundMarket is IAroundMarket {
     function sell(Result bet, uint256 amount, uint256 thisMarketId) external {
         require(amount > 0, "Token amount must be positive");
         
-        // update the user's position
+        // Calculate the output quantity and handling fee
+        (uint256 output, uint128 fee) = AroundMath._calculateSellOutput(
+            bet,
+            feeInfo[thisMarketId].totalFee,
+            liqudityInfo[thisMarketId].virtualLiquidity,
+            liqudityInfo[thisMarketId].tradeCollateralAmount + liqudityInfo[thisMarketId].lpCollateralAmount,
+            amount,
+            liqudityInfo[thisMarketId].yesAmount,
+            liqudityInfo[thisMarketId].noAmount
+        );
+        
+        require(liqudityInfo[thisMarketId].tradeCollateralAmount >= output + fee, "Insufficient output");
+
+        // update the user's position and liqudityInfo 
         if (bet == IAroundMarket.Result.Yes) {
             require(userPosition[msg.sender][thisMarketId].yesBalance >= amount, "Insufficient YES tokens");
             userPosition[msg.sender][thisMarketId].yesBalance -= amount;
@@ -108,22 +203,11 @@ contract AroundMarket is IAroundMarket {
             liqudityInfo[thisMarketId].noAmount -= amount;
         }
         
-        // Calculate the output quantity and handling fee
-        (uint256 output, uint128 fee) = AroundMath._calculateSellOutput(
-            bet,
-            marketInfo[thisMarketId].marketFee,
-            liqudityInfo[thisMarketId].virtualLiquidity,
-            liqudityInfo[thisMarketId].tradeCollateralAmount + liqudityInfo[thisMarketId].lpCollateralAmount,
-            amount,
-            liqudityInfo[thisMarketId].yesAmount,
-            liqudityInfo[thisMarketId].noAmount
-        );
-        
-        require(output > 0, "Insufficient output");
-        
         //update
         liqudityInfo[thisMarketId].tradeCollateralAmount -= uint128(output + fee);
         liqudityInfo[thisMarketId].totalFee += fee;
+
+        //TODO touch around pool
         
         IERC20(marketInfo[thisMarketId].collateral).safeTransfer(msg.sender, output);
     }
@@ -200,6 +284,11 @@ contract AroundMarket is IAroundMarket {
         IERC20(marketInfo[thisMarketId].collateral).safeTransfer(msg.sender, collateralAmount + feeShare);
     }
 
+    // TODO  allocates fees and withdraws all funds from aave to AroundPool
+    function touchOracle(uint256 thisMarketId) external {
+
+    }
+
     function redeemWinnings(uint256 thisMarketId) external returns (uint256 winnings) {
         require(block.timestamp > marketInfo[thisMarketId].endTime + 1 hours, "The review has not been completed.");
         UserPosition memory position = userPosition[msg.sender][thisMarketId];
@@ -235,6 +324,10 @@ contract AroundMarket is IAroundMarket {
         
         // clear
         delete userPosition[msg.sender][thisMarketId];
+    }
+
+    function _getPoolInfo(uint256 thisMarketId) private view returns (IAroundPoolFactory.PoolInfo memory thisPoolInfo) {
+        thisPoolInfo = IAroundPoolFactory(aroundPoolFactory).getPoolInfo(thisMarketId);
     }
     
     // View liquidity value
@@ -282,6 +375,14 @@ contract AroundMarket is IAroundMarket {
     
     function getNoPrice(uint256 thisMarketId) public view returns (uint256) {
         return 1e18 - getYesPrice(thisMarketId);
+    }
+
+    function getMarketInfo(uint256 thisMarketId) public view returns (MarketInfo memory thisMarketInfo) {
+        thisMarketInfo = marketInfo[thisMarketId];
+    }
+
+    function getLiqudityInfo(uint256 thisMarketId) public view returns (LiqudityInfo memory thisLiqudityInfo) {
+        thisLiqudityInfo = liqudityInfo[thisMarketId];
     }
 
 }

@@ -5,16 +5,36 @@ interface IAroundMarket {
 
     enum Result{Pending, Yes, No}
 
+    event SetFeeInfo(uint256 indexed thisId);
+
+    /*********************************Struct****************************************** */
+
+    struct FeeInfo {
+        uint16 officialFee;
+        uint16 luckyFee;
+        uint16 oracleFee;
+        uint16 insuranceFee;
+        uint16 liquidityFee;
+        uint16 totalFee;
+    }
+
+    struct TokenInfo {
+        bool valid;
+        uint128 guaranteeAmount;
+    }
+
+    struct QuestInfo {
+        string quest;
+        string resultData;
+    }
+
     struct MarketInfo{
         Result result;
-        uint16 marketFee;
         uint64 startTime;
         uint64 endTime;
         address collateral;
-        address around;
         address creator;
-        string quest;
-        string resultData;
+        QuestInfo questInfo;
     }
 
     struct LiqudityInfo {
