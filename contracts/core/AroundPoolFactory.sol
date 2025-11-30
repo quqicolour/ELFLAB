@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.26;
 
 import "./AroundPool.sol";
 import "./LuckyPool.sol";
@@ -68,7 +68,7 @@ contract AroundPoolFactory is Ownable, IAroundPoolFactory{
             keccak256(abi.encodePacked(marketId, msg.sender, block.chainid)),
             abi.encodePacked(
                 type(LuckyPool).creationCode, 
-                abi.encode(aroundMarket, collateral)
+                abi.encode(aroundMarket)
             )
         );
         //InsurancePool
@@ -94,6 +94,5 @@ contract AroundPoolFactory is Ownable, IAroundPoolFactory{
     function getAaveInfo() external view returns (AaveInfo memory thisAaveInfo) {
         thisAaveInfo = aaveInfo;
     }
-
 
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.26;
 
 import {IAroundPool} from "../interfaces/IAroundPool.sol";
 import {IAroundPoolFactory} from "../interfaces/IAroundPoolFactory.sol";
@@ -35,9 +35,11 @@ contract AroundPool is IAroundPool {
 
     function deposite(
         uint128 amountIn,
-        uint128 feeIn
+        uint128 thisLuckyFee,
+        uint128 thisLiquidityFee
     ) external onlyCaller returns (bool state) {
-        reserveInfo.feeAmount += feeIn;
+        reserveInfo.luckyFee += thisLuckyFee;
+        reserveInfo.liquidityFee += thisLiquidityFee;
         reserveInfo.marketTotalCollateralAmount += amountIn;
         address pool = _getAaveInfo().pool;
         if(getAavePoolPaused() == false) {
