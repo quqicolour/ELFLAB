@@ -34,8 +34,8 @@ contract LuckyPool {
         require(block.timestamp >= endTime + 2 hours, "It's not time yet");
         require(participants > 0, "No participants");
         address oracle = AroundMarket.oracle();
-        require(IEchoOptimisticOracle(oracle).getOracleRandomNumberInfo(thisMarketId).valid, "Invalid");
-        uint64 oracleRandomNumber = IEchoOptimisticOracle(oracle).getOracleRandomNumberInfo(thisMarketId).randomNumber;
+        require(IEchoOptimisticOracle(oracle).getOracleInfo(thisMarketId).randomNumber > 0, "Invalid randomNumber");
+        uint64 oracleRandomNumber = IEchoOptimisticOracle(oracle).getOracleInfo(thisMarketId).randomNumber;
         require(oracleRandomNumber != 0, "Invalid oracle randomNumber");
         _selectLuckyWinner(thisMarketId, oracleRandomNumber, participants);
         ifWithdraw = true;

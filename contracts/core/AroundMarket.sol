@@ -7,6 +7,7 @@ import {IAroundMarket} from "../interfaces/IAroundMarket.sol";
 import {IAroundPool} from "../interfaces/IAroundPool.sol";
 import {IInsurancePool} from "../interfaces/IInsurancePool.sol";
 import {IAroundPoolFactory} from "../interfaces/IAroundPoolFactory.sol";
+import {IEchoOptimisticOracle} from "../interfaces/IEchoOptimisticOracle.sol";
 import {IAroundError} from "../interfaces/IAroundError.sol";
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -144,6 +145,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
                 questInfo: newQuestInfo
             });
             liqudityInfo[marketId].virtualLiquidity = uint128(actualVirtualAmount);
+            IEchoOptimisticOracle(oracle).injectQuest(marketId, params.quest);
         }
         marketId++;
     }
@@ -167,6 +169,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
             uint128 remainAmount = amount - oracleFee - officialFee - insuranceFee - luckyFee - liquidityFee;
             //Oracle fee
             IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(msg.sender, oracle, oracleFee);
+            IEchoOptimisticOracle(oracle).injectFee(thisMarketId, oracleFee);
             //Official fee
             IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(msg.sender, feeReceiver, officialFee);
             //Insurance fee
@@ -285,6 +288,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
             IERC20(getMarketInfo(thisMarketId).collateral).safeTransfer(feeReceiver, officialFee);
             //transfer to oracle
             IERC20(getMarketInfo(thisMarketId).collateral).safeTransfer(oracle, oracleFee);
+            IEchoOptimisticOracle(oracle).injectFee(thisMarketId, oracleFee);
         }
 
         //Touch aroundPool
