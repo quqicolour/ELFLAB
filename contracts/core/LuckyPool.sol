@@ -57,12 +57,19 @@ contract LuckyPool {
         emit WithdrawReward(msg.sender, luckyWinner, winnerReward);
     }
     
-    function _getLuckyRandomNumber(uint64 _oracleRandomNumber, uint64 _totalUser) internal view returns (uint256) {
-        return uint256(keccak256(abi.encodePacked(
-            _oracleRandomNumber,
-            block.timestamp,
-            _totalUser
-        ))) % _totalUser;
+    function _getLuckyRandomNumber(uint64 _oracleRandomNumber, uint64 _totalUser) internal view returns (uint256 thisLuckyNumber) {
+        if(_totalUser == 1) {
+            thisLuckyNumber = 1;
+        } else {
+            thisLuckyNumber = uint256(keccak256(abi.encodePacked(
+                _oracleRandomNumber,
+                block.timestamp,
+                _totalUser
+            ))) % _totalUser;
+            if(thisLuckyNumber == 0) {
+                thisLuckyNumber = _totalUser;
+            }
+        }
     }
     
 }
