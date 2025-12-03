@@ -19,37 +19,37 @@ contract AroundMarket is IAroundMarket, IAroundError {
 
     uint32 private constant RATE = 100_000;
     uint256 public constant Min_Lucky_Volume = 1000;
-    uint16 public DefaultOfficialFee = 150;
-    uint16 public DefaultLiquidityFee = 150;
-    uint16 public DefaultOracleFee = 100;
-    uint16 public DefaultLuckyFee = 100;
-    uint16 public DefaultInsuranceFee = 100;
-    uint16 public DefaultTotalFee = 600;
-    uint32 public DefaultVirtualLiquidity = 100_000;
+    uint16 private DefaultOfficialFee = 150;
+    uint16 private DefaultLiquidityFee = 150;
+    uint16 private DefaultOracleFee = 100;
+    uint16 private DefaultLuckyFee = 100;
+    uint16 private DefaultInsuranceFee = 100;
+    uint16 private DefaultTotalFee = 600;
+    uint32 private DefaultVirtualLiquidity = 100_000;
 
     uint256 public marketId;
 
-    address public oracle;
     address public elfiNFT;
     address public feeReceiver;
     address public aroundPoolFactory;
+    address public oracle;
     bool public isInitialize;
     bool public openAave;
 
+    mapping(uint256 => FeeInfo) private feeInfo;
     mapping(uint256 => MarketInfo) private marketInfo;
     mapping(uint256 => LiqudityInfo) private liqudityInfo;
     mapping(address => mapping(uint256 => UserPosition)) private userPosition;
 
     mapping(uint256 => mapping(uint64 => address)) public raffleTicketToUser;
-
     mapping(address => TokenInfo) public tokenInfo;
-    mapping(uint256 => FeeInfo) public feeInfo;
 
-    function initialize(address _aroundPoolFactory) external {
+    function initialize(address thisAroundPoolFactory, address thisOracle) external {
         if(isInitialize) {
             revert AlreadyInitialize();
         }
-        aroundPoolFactory = _aroundPoolFactory;
+        aroundPoolFactory = thisAroundPoolFactory;
+        oracle = thisOracle;
         isInitialize = true;
     }
 
@@ -62,38 +62,30 @@ contract AroundMarket is IAroundMarket, IAroundError {
     }
 
     function setFeeInfo(
-        uint16 newOfficialFee,
-        uint16 newLuckyFee,
-        uint16 newOracleFee,
-        uint16 newInsuranceFee,
-        uint16 newLiquidityFee
+        PackedBaseFees calldata baseFee
     ) external {
-        DefaultOfficialFee =  newOfficialFee;
-        DefaultLuckyFee = newLuckyFee;
-        DefaultOracleFee = newOracleFee;
-        DefaultInsuranceFee = newInsuranceFee;
-        DefaultLiquidityFee = newLiquidityFee;
+        DefaultOfficialFee =  baseFee.officialFee;
+        DefaultLuckyFee = baseFee.luckyFee;
+        DefaultOracleFee = baseFee.oracleFee;
+        DefaultInsuranceFee = baseFee.insuranceFee;
+        DefaultLiquidityFee = baseFee.liquidityFee;
         DefaultTotalFee = DefaultOfficialFee + DefaultLuckyFee + 
         DefaultOracleFee + DefaultInsuranceFee + DefaultLiquidityFee;
     }
 
-    function batchAddTokenInfo(
-        address[] calldata tokens, 
-        bool[] calldata status,
-        uint128[] calldata amounts
+    function setTokenInfo(
+        address token, 
+        bool state,
+        uint128 amount
     ) external {
-        unchecked {
-            for(uint256 i; i<tokens.length; i++) {
-                tokenInfo[tokens[i]] = TokenInfo({
-                    valid: status[i],
-                    guaranteeAmount: amounts[i]
-                });
-            }
-        }
+        tokenInfo[token] = TokenInfo({
+            valid: state,
+            guaranteeAmount: amount
+        });
     }
 
     function createMarket(
-        AroundLibrary.CreateMarketParams calldata params
+        CreateMarketParams calldata params
     ) external {
         uint8 decimals = _getDecimals(params.collateral);
         uint64 currentTime = uint64(block.timestamp);
@@ -161,11 +153,11 @@ contract AroundMarket is IAroundMarket, IAroundError {
 
         // Transfer fund
         {
-            uint128 oracleFee = amount * feeInfo[thisMarketId].oracleFee / RATE;
-            uint128 officialFee = amount * feeInfo[thisMarketId].officialFee / RATE;
-            uint128 insuranceFee = amount * feeInfo[thisMarketId].insuranceFee / RATE;
-            uint128 luckyFee = amount * feeInfo[thisMarketId].luckyFee / RATE;
-            uint128 liquidityFee = amount * feeInfo[thisMarketId].liquidityFee / RATE;
+            uint128 oracleFee = amount * getFeeInfo(thisMarketId).oracleFee / RATE;
+            uint128 officialFee = amount * getFeeInfo(thisMarketId).officialFee / RATE;
+            uint128 insuranceFee = amount * getFeeInfo(thisMarketId).insuranceFee / RATE;
+            uint128 luckyFee = amount * getFeeInfo(thisMarketId).luckyFee / RATE;
+            uint128 liquidityFee = amount * getFeeInfo(thisMarketId).liquidityFee / RATE;
             uint128 remainAmount = amount - oracleFee - officialFee - insuranceFee - luckyFee - liquidityFee;
             //Oracle fee
             IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(msg.sender, oracle, oracleFee);
@@ -180,22 +172,23 @@ contract AroundMarket is IAroundMarket, IAroundError {
                 _getPoolInfo(thisMarketId).aroundPool, 
                 remainAmount + luckyFee + liquidityFee
             );
-            IAroundPool(_getPoolInfo(thisMarketId).aroundPool).deposite(
+            //inject aroundPool
+            _injectAroundPool(
+                _getPoolInfo(thisMarketId).aroundPool,
                 remainAmount, 
                 luckyFee,
                 liquidityFee
             );
         }
         uint8 decimals = _getDecimals(getMarketInfo(thisMarketId).collateral);
-        require(decimals > 0);
         uint128 netInput;
         // Calculate the net input (minus handling fees)
-        (netInput, ) = AroundMath._calculateNetInput(feeInfo[thisMarketId].totalFee, amount);
+        (netInput, ) = AroundMath._calculateNetInput(getFeeInfo(thisMarketId).totalFee, amount);
         
         // Calculate the output quantity and handling fee
         (uint256 output, uint128 fee) = AroundMath._calculateBuyOutput(
             bet,
-            feeInfo[thisMarketId].totalFee,
+            getFeeInfo(thisMarketId).totalFee,
             amount,
             getLiqudityInfo(thisMarketId).virtualLiquidity,
             getLiqudityInfo(thisMarketId).tradeCollateralAmount + getLiqudityInfo(thisMarketId).lpCollateralAmount,
@@ -227,7 +220,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
             if(userPosition[msg.sender][thisMarketId].raffleTicketNumber == 0){
                 uint64 number = getMarketInfo(thisMarketId).totalRaffleTicket;
                 raffleTicketToUser[thisMarketId][number] = msg.sender;
-                userPosition[msg.sender][thisMarketId].raffleTicketNumber = getMarketInfo(thisMarketId).totalRaffleTicket;
+                userPosition[msg.sender][thisMarketId].raffleTicketNumber = number;
             }
         }
     }
@@ -247,7 +240,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
         // Calculate the output quantity and handling fee
         (uint256 output, uint128 fee) = AroundMath._calculateSellOutput(
             bet,
-            feeInfo[thisMarketId].totalFee,
+            getFeeInfo(thisMarketId).totalFee,
             getLiqudityInfo(thisMarketId).virtualLiquidity,
             getLiqudityInfo(thisMarketId).tradeCollateralAmount + getLiqudityInfo(thisMarketId).lpCollateralAmount,
             amount,
@@ -282,8 +275,8 @@ contract AroundMarket is IAroundMarket, IAroundError {
         uint128 oracleFee;
 
         if(fee > 0) {
-            officialFee = fee * feeInfo[thisMarketId].officialFee / feeInfo[thisMarketId].totalFee;
-            oracleFee = fee * feeInfo[thisMarketId].oracleFee / feeInfo[thisMarketId].totalFee;
+            officialFee = fee * getFeeInfo(thisMarketId).officialFee / getFeeInfo(thisMarketId).totalFee;
+            oracleFee = fee * getFeeInfo(thisMarketId).oracleFee / getFeeInfo(thisMarketId).totalFee;
             //transfer to official
             IERC20(getMarketInfo(thisMarketId).collateral).safeTransfer(feeReceiver, officialFee);
             //transfer to oracle
@@ -292,8 +285,9 @@ contract AroundMarket is IAroundMarket, IAroundError {
         }
 
         //Touch aroundPool
-        IAroundPool(_getPoolInfo(thisMarketId).aroundPool).touch(
+        _touchAroundPool(
             false,
+            _getPoolInfo(thisMarketId).aroundPool,
             address(this),
             output + fee - officialFee - oracleFee
         );
@@ -308,7 +302,9 @@ contract AroundMarket is IAroundMarket, IAroundError {
     }
 
     function addLiquidity(uint128 amount, uint256 thisMarketId) external {
-        require(block.timestamp + 1 hours < getMarketInfo(thisMarketId).endTime, "Add liquidity is closed.");
+        if(block.timestamp + 1 hours >= getMarketInfo(thisMarketId).endTime) {
+            revert LiquidityWayClosed();
+        }
         if(amount == 0){
             revert ZeroAmount();
         }
@@ -319,7 +315,9 @@ contract AroundMarket is IAroundMarket, IAroundError {
             _getPoolInfo(thisMarketId).aroundPool, 
             amount
         );
-        IAroundPool(_getPoolInfo(thisMarketId).aroundPool).deposite(
+        //inject aroundPool
+        _injectAroundPool(
+            _getPoolInfo(thisMarketId).aroundPool,
             amount, 
             0,
             0
@@ -351,8 +349,12 @@ contract AroundMarket is IAroundMarket, IAroundError {
     }
 
     function removeLiquidity(uint256 thisMarketId, uint128 lpShare) external {
-        require(block.timestamp + 1 hours < getMarketInfo(thisMarketId).endTime, "Market removeLiquidity is over.");
-        require(lpShare > 0 && getUserPosition(msg.sender, thisMarketId).lp >= lpShare, "Invalid liquidity share");
+        if(block.timestamp + 1 hours >= getMarketInfo(thisMarketId).endTime) {
+            revert LiquidityWayClosed();
+        }
+        if(lpShare == 0 || getUserPosition(msg.sender, thisMarketId).lp < lpShare){
+            revert InvalidLpShare();
+        }
         
         // Calculate the due share of collateral tokens and transaction fees
         (uint128 collateralAmount, uint128 liquidityFeeShare) = AroundMath._calculateLiquidityWithdrawal(
@@ -362,7 +364,9 @@ contract AroundMarket is IAroundMarket, IAroundError {
             getUserPosition(msg.sender, thisMarketId).lp,
             getLiqudityInfo(thisMarketId).totalLp
         );
-        require(collateralAmount + liquidityFeeShare > 0, "No collateral to withdraw");
+        if(collateralAmount + liquidityFeeShare == 0) {
+            revert ZeroAmount();
+        }
         
         // Calculate the number of YES and NO tokens that should be reduced
         (uint256 yesReduction, uint256 noReduction) = AroundMath._calculateLiquidityShares(
@@ -388,8 +392,9 @@ contract AroundMarket is IAroundMarket, IAroundError {
         userPosition[msg.sender][thisMarketId].collateralAmount -= collateralAmount;
 
         //Touch aroundPool
-        IAroundPool(_getPoolInfo(thisMarketId).aroundPool).touch(
+        _touchAroundPool(
             false,
+            _getPoolInfo(thisMarketId).aroundPool,
             msg.sender,
             collateralAmount + liquidityFeeShare
         );
@@ -401,13 +406,17 @@ contract AroundMarket is IAroundMarket, IAroundError {
     }
 
     function redeemWinnings(uint256 thisMarketId) external returns (uint256 winnings) {
-        require(block.timestamp > getMarketInfo(thisMarketId).endTime + 2 hours, "The review has not been completed.");
+        if(block.timestamp <= getMarketInfo(thisMarketId).endTime + 2 hours){
+            revert NotWithdrawTime();
+        }
         // UserPosition memory position = userPosition[msg.sender][thisMarketId];
-        require(
-            getUserPosition(msg.sender, thisMarketId).yesBalance > 0 || 
-            getUserPosition(msg.sender, thisMarketId).noBalance > 0 || 
-            getUserPosition(msg.sender, thisMarketId).lp > 0, "No position"
-        );
+        if(
+            getUserPosition(msg.sender, thisMarketId).yesBalance == 0 && 
+            getUserPosition(msg.sender, thisMarketId).noBalance == 0 && 
+            getUserPosition(msg.sender, thisMarketId).lp == 0
+        ){
+            revert ZeroAmount();
+        }
         
         // Calculate the token earnings
         if (getMarketInfo(thisMarketId).result == Result.Yes) {  
@@ -436,16 +445,43 @@ contract AroundMarket is IAroundMarket, IAroundError {
             winnings += (liquidityValue + feeShare);
         }
         
-        require(winnings > 0, "No winnings");
+        if(winnings == 0){revert ZeroAmount();}
 
         //Touch aroundPool
-        IAroundPool(_getPoolInfo(thisMarketId).aroundPool).touch(
+        _touchAroundPool(
             true,
+            _getPoolInfo(thisMarketId).aroundPool,
             msg.sender,
             winnings
         );
         // clear
         delete userPosition[msg.sender][thisMarketId];
+    }
+
+    function _injectAroundPool(
+        address _aroundPool,
+        uint128 _amountIn,
+        uint128 _luckyFee,
+        uint128 _liquidityFee
+    ) private {
+        (bool suc, ) = address(this).call(abi.encodeCall(
+            IAroundPool(_aroundPool).deposite,
+            (_amountIn, _luckyFee, _liquidityFee)
+        ));
+        if(suc == false) {revert TouchAroundErr();}
+    }
+
+    function _touchAroundPool(
+        bool _ifEnd, 
+        address _aroundPool,
+        address _receiver, 
+        uint256 _value
+    ) private {
+        (bool suc, ) = address(this).call(abi.encodeCall(
+            IAroundPool(_aroundPool).touch,
+            (_ifEnd, _receiver, _value)
+        ));
+        if(suc == false) {revert TouchAroundErr();}
     }
 
     function _getPoolInfo(uint256 thisMarketId) private view returns (IAroundPoolFactory.PoolInfo memory thisPoolInfo) {
@@ -454,6 +490,10 @@ contract AroundMarket is IAroundMarket, IAroundError {
 
     function _getDecimals(address token) private view returns (uint8 thisDecimals) {
         thisDecimals = IERC20Metadata(token).decimals();
+    }
+
+    function getFeeInfo(uint256 thisMarketId) public view returns (FeeInfo memory thisFeeInfo) {
+        thisFeeInfo = feeInfo[thisMarketId];
     }
 
     function getUserPosition(address user, uint256 thisMarketId) public view returns (UserPosition memory thisUserPosition) {

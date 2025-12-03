@@ -24,17 +24,16 @@ contract EchoOptimisticOracle is Ownable, ReentrancyGuard, IEchoOptimisticOracle
     uint256 public challengerFee = 100;
     uint256 public challengRewardRate = 75;
     uint256 public registFee = 10000;
-
+    
+    address private troublemaker;
     address public aroundMarket;
     address public usdc;
     bool public isInitialize;
 
     mapping(address => bool) public validCollateral;
-    mapping(address => bool) public dataProvider;
     mapping(address => bool) public investigator;
-    mapping(uint256 => uint256) public gains;
-
-    mapping(address => uint256) public pledgeAmount;
+    mapping(address => DataProviderInfo) public dataProviderInfo;
+    mapping(address => uint256) public providerPledgeAmount;
 
     mapping(uint256 => OracleInfo) private oracleInfo;
 
@@ -42,41 +41,56 @@ contract EchoOptimisticOracle is Ownable, ReentrancyGuard, IEchoOptimisticOracle
 
     constructor() Ownable(msg.sender) {}
 
-    function initialize(address _aroundMarket) external {
+    function initialize(address _aroundMarket) external onlyOwner {
         require(isInitialize == false, "Already initialize");
         aroundMarket = _aroundMarket;
         isInitialize = true;
     }
 
-    function setRegistFee(uint256 newRegistFee) external {
+    function setRegistFee(uint256 newRegistFee) external onlyOwner {
         registFee = newRegistFee;
     }
 
-    function setChallengerFee(uint256 newChallengerFee) external {
+    function setChallengerFee(uint256 newChallengerFee) external onlyOwner {
         challengerFee = newChallengerFee;
     }
 
-    function setCoolingTime(uint32 newCoolingTime) external {
+    function setCoolingTime(uint32 newCoolingTime) external onlyOwner {
+        require(newCoolingTime >= 60, "Invalid");
         coolingTime = newCoolingTime;
     }
 
+    function setTroublemaker(address newTroublemaker) external onlyOwner {
+        troublemaker = newTroublemaker;
+    }
+
     function registProvider(address provider) external { 
-        require(dataProvider[msg.sender] == false, "Already a challenger");
+        require(dataProviderInfo[msg.sender].valid == false, "Already a challenger");
         uint256 value = registFee * 10 ** _getUSDCDecimals();
         IERC20(usdc).safeTransferFrom(msg.sender, address(this), value);
-        dataProvider[provider] = true;
+        dataProviderInfo[provider].valid = true;
+        dataProviderInfo[provider].latestSubmitTime = uint64(block.timestamp);
+        dataProviderInfo[provider].depositeAmount += uint128(value);
         emit RegisterProvider(provider);
+    }
+
+    function disruptRandom(uint256 id) external {
+        require(msg.sender == troublemaker, "Non troublemaker");
+        require(block.timestamp <= oracleInfo[id].updateTime + coolingTime, "Finished");
+        uint64 beforeRandom = oracleInfo[id].randomNumber;
+        oracleInfo[id].randomNumber = beforeRandom / 2 + 666;
     }
 
     function injectQuest(uint256 id, string calldata thisQuest) external {
         require(msg.sender == aroundMarket, "Non aroundMarket");
         oracleInfo[id].quest = thisQuest;
+        emit InjectQuest(id, thisQuest);
     }
 
-    function injectFee(uint256 thisMarketId, uint256 value) external {
+    function injectFee(uint256 id, uint256 value) external {
         require(msg.sender == aroundMarket, "Non aroundMarket");
-        gains[thisMarketId] += value;
-        emit InjectFee(thisMarketId, value);
+        oracleInfo[id].earn += value;
+        emit InjectFee(id, value);
     }
 
     function submitData(
@@ -86,7 +100,7 @@ contract EchoOptimisticOracle is Ownable, ReentrancyGuard, IEchoOptimisticOracle
         string calldata eventDataSources
     ) external nonReentrant {
         require(submitDataInfo[msg.sender][id].eventState == EventState.Pending, "Already submit");
-        require(dataProvider[msg.sender], "Not data provider");
+        require(dataProviderInfo[msg.sender].valid, "Not data provider");
         EventState newEventState;
 
         oracleInfo[id].optimisticInfo.responseCount++;
@@ -157,22 +171,25 @@ contract EchoOptimisticOracle is Ownable, ReentrancyGuard, IEchoOptimisticOracle
         }
     }
 
-    function withdrawOracle(
+    function withdrawEarn(
         uint256 id
     ) external nonReentrant {
         require(block.timestamp > oracleInfo[id].updateTime + coolingTime, "Not finish");
         require(oracleInfo[id].optimisticInfo.isDisputePass == false, "Dispute pass");
-        require(oracleInfo[id].ifWithdraw == false, "Already withdraw");
+        require(oracleInfo[id].withdrawState == OracleWithdrawState.Pending, "Already withdraw");
         uint256 len = oracleInfo[id].optimisticInfo.responseCount;
-        uint256 earn = gains[id];
+        uint256 earn = oracleInfo[id].earn;
         require(earn > Minimum_Reward, "Invalid amount");
-        uint256 singleExamineFee = earn / len;
-        oracleInfo[id].ifWithdraw = true;
+        uint256 singleProviderFee = earn / len;
+        oracleInfo[id].withdrawState = OracleWithdrawState.providerWithdrawd;
         //Transfer to each provider
         unchecked {
             for(uint256 i; i<len; i++) {
-                address thisInvestigator = oracleInfo[id].optimisticInfo.providers[i];
-                IERC20(usdc).safeTransfer(thisInvestigator, singleExamineFee);
+                address thisProvider = oracleInfo[id].optimisticInfo.providers[i];
+                //The correct providers will receive rewards.
+                if(submitDataInfo[thisProvider][id].eventState == oracleInfo[id].eventState) {
+                    IERC20(usdc).safeTransfer(thisProvider, singleProviderFee);
+                }
             }
         }
     }
@@ -180,11 +197,11 @@ contract EchoOptimisticOracle is Ownable, ReentrancyGuard, IEchoOptimisticOracle
     function withdrawDispute(
         uint256 id
     ) external nonReentrant {
-        require(oracleInfo[id].disputeWithdrawd == false, "Already withdraw");
         require(oracleInfo[id].optimisticInfo.state == OracleState.Dispute, "Invalid");
+        require(oracleInfo[id].withdrawState == OracleWithdrawState.Pending, "Already withdraw");
         require(block.timestamp > oracleInfo[id].updateTime + coolingTime, "Not finish");
 
-        oracleInfo[id].disputeWithdrawd = true;
+        oracleInfo[id].withdrawState = OracleWithdrawState.disputeWithdrawd;
 
         if(oracleInfo[id].optimisticInfo.isDisputePass) {
             address challenger = oracleInfo[id].optimisticInfo.challenger;

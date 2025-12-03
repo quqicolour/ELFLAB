@@ -9,5 +9,9 @@ interface IAroundError {
     error ZeroAmount();
     error InvalidOutput();
     error InsufficientBalance();
+    error LiquidityWayClosed();
+    error InvalidLpShare();
     error MarketAlreadyEnd();
+    error NotWithdrawTime();
+    error TouchAroundErr();
 }

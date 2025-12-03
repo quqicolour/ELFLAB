@@ -23,6 +23,6 @@ interface IAroundPool {
         bool ifEnd,
         address receiver, 
         uint256 amount
-    ) external returns (bool state);
+    ) external;
 
 }

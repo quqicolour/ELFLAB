@@ -5,13 +5,6 @@ library AroundLibrary {
 
     uint32 private constant Max_Virtual_Rate = 100_000_000;
 
-    struct CreateMarketParams {
-        uint32 period;
-        uint128 expectVirtualLiquidity;
-        address collateral;
-        string quest;
-    }
-
     function _getGuardedAmount(
         uint8 _thisDecimals, 
         uint128 _expectVirtualAmount,

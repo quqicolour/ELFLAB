@@ -56,7 +56,7 @@ contract AroundPool is IAroundPool {
         bool ifEnd,
         address receiver, 
         uint256 amount
-    ) external onlyCaller returns (bool state) {
+    ) external onlyCaller {
         bool aaveState = getAavePoolPaused();
         address pool = _getAaveInfo().pool;
         if(aaveState == false) {
@@ -75,7 +75,6 @@ contract AroundPool is IAroundPool {
             IPool(pool).deposit(token, tokenBalance, address(this), _getAaveInfo().referralCode);
         }
         emit Touch(token, receiver, amount);
-        state = true;
     }
 
     function _checkCaller() private view {

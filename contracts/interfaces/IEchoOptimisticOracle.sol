@@ -14,6 +14,30 @@ interface IEchoOptimisticOracle {
         No
     }
 
+    enum OracleWithdrawState {
+        Pending,
+        providerWithdrawd,
+        disputeWithdrawd
+    }
+
+    struct DataProviderInfo {
+        bool valid;
+        uint64 latestSubmitTime;
+        uint128 depositeAmount;
+    }
+
+    struct OracleInfo {
+        EventState eventState;
+        OracleWithdrawState withdrawState;
+        uint16 yesVote;
+        uint16 noVote;
+        uint64 randomNumber;
+        uint64 updateTime;
+        uint256 earn;
+        string quest;
+        OptimisticInfo optimisticInfo;
+    }
+
     struct OptimisticInfo {
         OracleState state;
         bool isDisputePass;
@@ -23,18 +47,6 @@ interface IEchoOptimisticOracle {
         string evidence;
         address[] providers;
         address[] investigators;
-    }
-
-    struct OracleInfo {
-        EventState eventState;
-        bool ifWithdraw;
-        bool disputeWithdrawd;
-        uint16 yesVote;
-        uint16 noVote;
-        uint64 randomNumber;
-        uint64 updateTime;
-        string quest;
-        OptimisticInfo optimisticInfo;
     }
 
     struct SubmitDataInfo {
@@ -51,7 +63,7 @@ interface IEchoOptimisticOracle {
     event Challenge(address indexed challenger, uint256 indexed thisMarketId);
 
     function injectQuest(uint256 id, string calldata thisQuest) external;
-    function injectFee(uint256 thisMarketId, uint256 value) external;
+    function injectFee(uint256 id, uint256 value) external;
 
     function getOracleInfo(uint256 id) external view returns (
         OracleInfo memory thisOracleInfo
