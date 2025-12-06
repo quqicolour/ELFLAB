@@ -3,7 +3,6 @@ pragma solidity ^0.8.26;
 
 import "./AroundPool.sol";
 import "./LuckyPool.sol";
-import "./InsurancePool.sol";
 import {IAroundMarket} from "../interfaces/IAroundMarket.sol";
 import {IAroundPoolFactory} from "../interfaces/IAroundPoolFactory.sol";
 
@@ -71,19 +70,9 @@ contract AroundPoolFactory is Ownable, IAroundPoolFactory{
                 abi.encode(aroundMarket)
             )
         );
-        //InsurancePool
-        address newInsurancePool = Create2.deploy(
-            0, 
-            keccak256(abi.encodePacked(marketId, msg.sender, block.chainid)), 
-            abi.encodePacked(
-                type(InsurancePool).creationCode, 
-                abi.encode(aroundMarket, collateral)
-            )
-        );
         poolInfo[marketId].collateral = collateral;
         poolInfo[marketId].aroundPool = newAroundPool;
         poolInfo[marketId].luckyPool = newLuckyPool;
-        poolInfo[marketId].insurancePool = newInsurancePool;
         marketId++;
     }
 

@@ -7,7 +7,6 @@ interface IAroundPoolFactory {
         address collateral;
         address aroundPool;
         address luckyPool;
-        address insurancePool;
     }
 
     struct AaveInfo {

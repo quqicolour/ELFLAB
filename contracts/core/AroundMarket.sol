@@ -5,7 +5,6 @@ import {AroundMath} from "../libraries/AroundMath.sol";
 import {AroundLibrary} from "../libraries/AroundLibrary.sol";
 import {IAroundMarket} from "../interfaces/IAroundMarket.sol";
 import {IAroundPool} from "../interfaces/IAroundPool.sol";
-import {IInsurancePool} from "../interfaces/IInsurancePool.sol";
 import {IAroundPoolFactory} from "../interfaces/IAroundPoolFactory.sol";
 import {IEchoOptimisticOracle} from "../interfaces/IEchoOptimisticOracle.sol";
 import {IAroundError} from "../interfaces/IAroundError.sol";
@@ -23,7 +22,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
     uint16 private DefaultLiquidityFee = 150;
     uint16 private DefaultOracleFee = 100;
     uint16 private DefaultLuckyFee = 100;
-    uint16 private DefaultInsuranceFee = 100;
+    uint16 private DefaultCreatorFee = 100;
     uint16 private DefaultTotalFee = 600;
     uint32 private DefaultVirtualLiquidity = 100_000;
 
@@ -34,7 +33,6 @@ contract AroundMarket is IAroundMarket, IAroundError {
     address public aroundPoolFactory;
     address public oracle;
     bool public isInitialize;
-    bool public openAave;
 
     mapping(uint256 => FeeInfo) private feeInfo;
     mapping(uint256 => MarketInfo) private marketInfo;
@@ -57,8 +55,8 @@ contract AroundMarket is IAroundMarket, IAroundError {
         DefaultVirtualLiquidity = newDefaultVirtualLiquidity;
     }
 
-    function setOpenAave(bool state) external {
-        openAave = state;
+    function setMarketOpenAave(uint256 thisMarketId, bool state) external {
+        marketInfo[thisMarketId].marketState.ifOpenAave = state;
     }
 
     function setFeeInfo(
@@ -67,10 +65,10 @@ contract AroundMarket is IAroundMarket, IAroundError {
         DefaultOfficialFee =  baseFee.officialFee;
         DefaultLuckyFee = baseFee.luckyFee;
         DefaultOracleFee = baseFee.oracleFee;
-        DefaultInsuranceFee = baseFee.insuranceFee;
+        DefaultCreatorFee = baseFee.creatorFee;
         DefaultLiquidityFee = baseFee.liquidityFee;
         DefaultTotalFee = DefaultOfficialFee + DefaultLuckyFee + 
-        DefaultOracleFee + DefaultInsuranceFee + DefaultLiquidityFee;
+        DefaultOracleFee + DefaultCreatorFee + DefaultLiquidityFee;
     }
 
     function setTokenInfo(
@@ -90,7 +88,6 @@ contract AroundMarket is IAroundMarket, IAroundError {
         uint8 decimals = _getDecimals(params.collateral);
         uint64 currentTime = uint64(block.timestamp);
         uint64 endTime = currentTime + params.period;
-        require(decimals > 0);
         if(tokenInfo[params.collateral].valid == false) {
             revert InvalidToken();
         }
@@ -113,22 +110,21 @@ contract AroundMarket is IAroundMarket, IAroundError {
                 quest: params.quest,
                 resultData: ""
             });
-            MarketState memory newMarketState = MarketState({
-                ifOpenAave: openAave,
-                locked: false,
-                valid: true
-            });
             feeInfo[marketId] = FeeInfo({
                 officialFee: DefaultOfficialFee,
                 luckyFee: DefaultLiquidityFee,
                 oracleFee: DefaultOracleFee,
                 liquidityFee: DefaultLuckyFee,
-                insuranceFee: DefaultInsuranceFee,
+                creatorFee: DefaultCreatorFee,
                 totalFee: DefaultTotalFee
             });
             marketInfo[marketId] = MarketInfo({
                 result: Result.Pending,
-                marketState: newMarketState,
+                marketState: MarketState({
+                    ifOpenAave: false,
+                    locked: false,
+                    valid: true
+                }),
                 startTime: currentTime,
                 endTime: endTime,
                 totalRaffleTicket: 0,
@@ -143,29 +139,27 @@ contract AroundMarket is IAroundMarket, IAroundError {
     }
 
     function buy(Result bet, uint128 amount, uint256 thisMarketId) external {
-        if(amount == 0){
-            revert ZeroAmount();
-        }
+        _checkZeroAmount(amount);
         //TODO
-        // if(block.timestamp >= getMarketInfo(thisMarketId).endTime) {
-        //     revert MarketAlreadyEnd();
-        // }
+        _checkMarketIfClosed(thisMarketId);
 
         // Transfer fund
         {
             uint128 oracleFee = amount * getFeeInfo(thisMarketId).oracleFee / RATE;
             uint128 officialFee = amount * getFeeInfo(thisMarketId).officialFee / RATE;
-            uint128 insuranceFee = amount * getFeeInfo(thisMarketId).insuranceFee / RATE;
+            uint128 creatorFee = amount * getFeeInfo(thisMarketId).creatorFee / RATE;
             uint128 luckyFee = amount * getFeeInfo(thisMarketId).luckyFee / RATE;
             uint128 liquidityFee = amount * getFeeInfo(thisMarketId).liquidityFee / RATE;
-            uint128 remainAmount = amount - oracleFee - officialFee - insuranceFee - luckyFee - liquidityFee;
-            //Oracle fee
-            IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(msg.sender, oracle, oracleFee);
-            IEchoOptimisticOracle(oracle).injectFee(thisMarketId, oracleFee);
-            //Official fee
-            IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(msg.sender, feeReceiver, officialFee);
-            //Insurance fee
-            IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(msg.sender, _getPoolInfo(thisMarketId).insurancePool, insuranceFee);
+            uint128 remainAmount = amount - getFeeInfo(thisMarketId).totalFee / RATE;
+
+            _transferFee(
+                getMarketInfo(thisMarketId).collateral,
+                thisMarketId,
+                oracleFee,
+                creatorFee,
+                officialFee
+            );
+            
             //Transfer fund to around
             IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(
                 msg.sender, 
@@ -226,19 +220,16 @@ contract AroundMarket is IAroundMarket, IAroundError {
     }
 
     function sell(Result bet, uint256 amount, uint256 thisMarketId) external {
-        if(amount == 0){
-            revert ZeroAmount();
-        }
-        uint8 decimals = _getDecimals(getMarketInfo(thisMarketId).collateral);
-        require(decimals > 0);
+        _checkZeroAmount(amount);
 
         //TODO
-        // if(block.timestamp >= getMarketInfo(thisMarketId).endTime) {
-        //     revert MarketAlreadyEnd();
-        // }
-        
+        _checkMarketIfClosed(thisMarketId);
+
+        uint8 decimals = _getDecimals(getMarketInfo(thisMarketId).collateral);
+        uint128 fee;
+        uint256 output;
         // Calculate the output quantity and handling fee
-        (uint256 output, uint128 fee) = AroundMath._calculateSellOutput(
+        (output, fee) = AroundMath._calculateSellOutput(
             bet,
             getFeeInfo(thisMarketId).totalFee,
             getLiqudityInfo(thisMarketId).virtualLiquidity,
@@ -273,15 +264,18 @@ contract AroundMarket is IAroundMarket, IAroundError {
         liqudityInfo[thisMarketId].totalFee += fee;
         uint128 officialFee;
         uint128 oracleFee;
-
+        uint128 creatorFee;
         if(fee > 0) {
             officialFee = fee * getFeeInfo(thisMarketId).officialFee / getFeeInfo(thisMarketId).totalFee;
             oracleFee = fee * getFeeInfo(thisMarketId).oracleFee / getFeeInfo(thisMarketId).totalFee;
-            //transfer to official
-            IERC20(getMarketInfo(thisMarketId).collateral).safeTransfer(feeReceiver, officialFee);
-            //transfer to oracle
-            IERC20(getMarketInfo(thisMarketId).collateral).safeTransfer(oracle, oracleFee);
-            IEchoOptimisticOracle(oracle).injectFee(thisMarketId, oracleFee);
+            creatorFee = fee * getFeeInfo(thisMarketId).creatorFee / getFeeInfo(thisMarketId).totalFee;
+            _transferFee(
+                getMarketInfo(thisMarketId).collateral,
+                thisMarketId,
+                oracleFee,
+                creatorFee,
+                officialFee
+            );
         }
 
         //Touch aroundPool
@@ -289,7 +283,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
             false,
             _getPoolInfo(thisMarketId).aroundPool,
             address(this),
-            output + fee - officialFee - oracleFee
+            output + fee - officialFee - oracleFee - creatorFee
         );
         //transfer to user
         IERC20(getMarketInfo(thisMarketId).collateral).safeTransfer(msg.sender, output);
@@ -302,12 +296,8 @@ contract AroundMarket is IAroundMarket, IAroundError {
     }
 
     function addLiquidity(uint128 amount, uint256 thisMarketId) external {
-        if(block.timestamp + 1 hours >= getMarketInfo(thisMarketId).endTime) {
-            revert LiquidityWayClosed();
-        }
-        if(amount == 0){
-            revert ZeroAmount();
-        }
+        _checkLiquidityWayIfClosed(thisMarketId);
+        _checkZeroAmount(amount);
         
         //Transfer to aroundPool
         IERC20(getMarketInfo(thisMarketId).collateral).safeTransferFrom(
@@ -349,9 +339,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
     }
 
     function removeLiquidity(uint256 thisMarketId, uint128 lpShare) external {
-        if(block.timestamp + 1 hours >= getMarketInfo(thisMarketId).endTime) {
-            revert LiquidityWayClosed();
-        }
+        _checkLiquidityWayIfClosed(thisMarketId);
         if(lpShare == 0 || getUserPosition(msg.sender, thisMarketId).lp < lpShare){
             revert InvalidLpShare();
         }
@@ -364,9 +352,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
             getUserPosition(msg.sender, thisMarketId).lp,
             getLiqudityInfo(thisMarketId).totalLp
         );
-        if(collateralAmount + liquidityFeeShare == 0) {
-            revert ZeroAmount();
-        }
+        _checkZeroAmount(collateralAmount + liquidityFeeShare);
         
         // Calculate the number of YES and NO tokens that should be reduced
         (uint256 yesReduction, uint256 noReduction) = AroundMath._calculateLiquidityShares(
@@ -445,7 +431,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
             winnings += (liquidityValue + feeShare);
         }
         
-        if(winnings == 0){revert ZeroAmount();}
+        _checkZeroAmount(winnings);
 
         //Touch aroundPool
         _touchAroundPool(
@@ -458,13 +444,32 @@ contract AroundMarket is IAroundMarket, IAroundError {
         delete userPosition[msg.sender][thisMarketId];
     }
 
+    function _transferFee(
+        address _collateral,
+        uint256 _thisMarketId,
+        uint128 _oracleFee,
+        uint128 _creatorFee,
+        uint128 _officialFee
+    ) private {
+        IERC20(_collateral).safeTransferFrom(msg.sender, oracle, _oracleFee);
+        IEchoOptimisticOracle(oracle).injectFee(_thisMarketId, _oracleFee);
+            //Creator fee
+        IERC20(_collateral).safeTransferFrom(
+            msg.sender, 
+            getMarketInfo(_thisMarketId).creator, 
+            _creatorFee
+        );
+            //Official fee
+        IERC20(_collateral).safeTransferFrom(msg.sender, feeReceiver, _officialFee);
+    }
+
     function _injectAroundPool(
         address _aroundPool,
         uint128 _amountIn,
         uint128 _luckyFee,
         uint128 _liquidityFee
     ) private {
-        (bool suc, ) = address(this).call(abi.encodeCall(
+        (bool suc, ) = _aroundPool.call(abi.encodeCall(
             IAroundPool(_aroundPool).deposite,
             (_amountIn, _luckyFee, _liquidityFee)
         ));
@@ -477,11 +482,29 @@ contract AroundMarket is IAroundMarket, IAroundError {
         address _receiver, 
         uint256 _value
     ) private {
-        (bool suc, ) = address(this).call(abi.encodeCall(
+        (bool suc, ) = _aroundPool.call(abi.encodeCall(
             IAroundPool(_aroundPool).touch,
             (_ifEnd, _receiver, _value)
         ));
         if(suc == false) {revert TouchAroundErr();}
+    }
+
+    function _checkLiquidityWayIfClosed(uint256 _thisMarketId) private view {
+        if(block.timestamp + 1 hours >= getMarketInfo(_thisMarketId).endTime) {
+            revert LiquidityWayClosed();
+        }
+    }
+
+    function _checkMarketIfClosed(uint256 _thisMarketId) private view {
+        if(block.timestamp >= getMarketInfo(_thisMarketId).endTime) {
+            revert MarketClosed();
+        }
+    }
+
+    function _checkZeroAmount(uint256 _amount) private pure {
+        if(_amount == 0) {
+            revert ZeroAmount();
+        }
     }
 
     function _getPoolInfo(uint256 thisMarketId) private view returns (IAroundPoolFactory.PoolInfo memory thisPoolInfo) {

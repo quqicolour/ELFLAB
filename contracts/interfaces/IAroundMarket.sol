@@ -11,7 +11,7 @@ interface IAroundMarket {
         uint16 liquidityFee;
         uint16 oracleFee;
         uint16 luckyFee;
-        uint16 insuranceFee;
+        uint16 creatorFee;
         uint16 totalFee;
     }
     
@@ -26,7 +26,7 @@ interface IAroundMarket {
         uint16 officialFee;
         uint16 luckyFee;
         uint16 oracleFee;
-        uint16 insuranceFee;
+        uint16 creatorFee;
         uint16 liquidityFee;
         uint16 totalFee;
     }

@@ -11,7 +11,8 @@ interface IAroundError {
     error InsufficientBalance();
     error LiquidityWayClosed();
     error InvalidLpShare();
-    error MarketAlreadyEnd();
+    error MarketClosed();
     error NotWithdrawTime();
+    error TouchOracleErr();
     error TouchAroundErr();
 }

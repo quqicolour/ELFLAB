@@ -77,6 +77,22 @@ contract AroundPool is IAroundPool {
         emit Touch(token, receiver, amount);
     }
 
+    function exitFromAave() external onlyCaller {
+        bool aaveState = getAavePoolPaused();
+        address pool = _getAaveInfo().pool;
+        if(aaveState == false) {
+            address aToken = _getAaveInfo().aToken;
+            uint256 aTokenBalance = IERC20(aToken).balanceOf(address(this));
+            if(aTokenBalance > 0){
+                IERC20(aToken).approve(pool, type(uint256).max);
+                IPool(pool).withdraw(token, type(uint256).max, address(this));
+                IERC20(aToken).approve(pool, 0);
+            }
+        }else {
+            revert ("Inactive Aave pool");
+        }
+    }
+
     function _checkCaller() private view {
         require(msg.sender == aroundMarket, "Non caller");
     }
