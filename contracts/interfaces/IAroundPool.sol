@@ -5,24 +5,24 @@ interface IAroundPool {
 
     struct ReserveInfo {
         uint128 lentOut;
-        uint128 marketCollateralAmount;
-        uint128 marketTotalCollateralAmount;
-        uint128 luckyFee;
-        uint128 liquidityFee;
+        uint128 balance;
+        uint128 totalCollateralAmount;
     }
 
     event Touch(address indexed thisToken, address indexed thisReceiver, uint256 indexed thisAmount);
 
     function deposite(
-        uint128 amountIn,
-        uint128 thisLuckyFee,
-        uint128 thisLiquidityFee
-    ) external returns (bool state);
+        bool ifOpenAave,
+        uint128 amountIn
+    ) external;
 
     function touch(
         bool ifEnd,
-        address receiver, 
-        uint256 amount
+        bool ifOpenAave,
+        address receiver,
+        uint128 amountOut
     ) external;
+
+    function allot(bool ifOpenAave) external;
 
 }

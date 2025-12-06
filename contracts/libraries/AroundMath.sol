@@ -391,7 +391,6 @@ library AroundMath {
         uint256 _userTotalLp,
         uint256 _totalLp
     ) internal pure returns (uint128 collateralAmount, uint128 feeShare) {
-        require(_totalLp > 0, "No liquidity provided");
         collateralAmount = uint128(_lpShare * _lpCollateral / _userTotalLp);
         feeShare = uint128(_lpShare * _feeAmount / _totalLp);
     }

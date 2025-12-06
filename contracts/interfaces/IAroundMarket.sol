@@ -18,8 +18,8 @@ interface IAroundMarket {
     struct CreateMarketParams {
         uint32 period;
         uint128 expectVirtualLiquidity;
-        address collateral;
         string quest;
+        uint256 thisMarketId;
     }
 
     struct FeeInfo {
@@ -42,11 +42,6 @@ interface IAroundMarket {
         bool valid;
     }
 
-    struct QuestInfo {
-        string quest;
-        string resultData;
-    }
-
     struct MarketInfo{
         Result result;
         MarketState marketState;
@@ -55,15 +50,13 @@ interface IAroundMarket {
         uint64 totalRaffleTicket;
         address collateral;
         address creator;
-        QuestInfo questInfo;
+        string quest;
     }
 
     struct LiqudityInfo {
         uint128 virtualLiquidity;
         uint128 tradeCollateralAmount;
         uint128 lpCollateralAmount;
-        uint128 totalFee;
-        uint128 luckyFeeAmount;
         uint128 liquidityFeeAmount;
         uint256 totalLp;
         uint256 yesAmount;
@@ -78,6 +71,14 @@ interface IAroundMarket {
         uint256 lp;
         uint256 volume;
     }
+
+    /*********************************Event****************************************** */
+    event CreateNewMarket(uint256 thisNewMarketId, address creator);
+    event Buy(uint256 thisMarketId, address buyer, Result bet, uint256 value);
+    event Sell(uint256 thisMarketId, address seller, Result bet, uint256 amount);
+    event AddLiqudity(uint256 thisMarketId, address lpProvider, uint256 value);
+    event RemoveLiqudity(uint256 thisMarketId, address lpProvider, uint256 lpAmount);
+    event Release(uint256 thisMarketId, address user, uint256 value);
 
     function oracle() external view returns (address);
 

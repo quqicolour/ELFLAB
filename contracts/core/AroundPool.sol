@@ -13,6 +13,7 @@ contract AroundPool is IAroundPool {
 
     using SafeERC20 for IERC20;
 
+    uint64 private MinimumProfit = 10000;
     address public aroundPoolFactory;
     address public aroundMarket;
     address public token;
@@ -34,32 +35,29 @@ contract AroundPool is IAroundPool {
     ReserveInfo public reserveInfo;
 
     function deposite(
-        uint128 amountIn,
-        uint128 thisLuckyFee,
-        uint128 thisLiquidityFee
-    ) external onlyCaller returns (bool state) {
-        reserveInfo.luckyFee += thisLuckyFee;
-        reserveInfo.liquidityFee += thisLiquidityFee;
-        reserveInfo.marketTotalCollateralAmount += amountIn;
+        bool ifOpenAave,
+        uint128 amountIn
+    ) external onlyCaller{
+        //Trade amount + liquidityFee
+        reserveInfo.totalCollateralAmount += amountIn;
+        reserveInfo.balance = uint128(_getTokenBalance());
         address pool = _getAaveInfo().pool;
-        if(getAavePoolPaused() == false) {
-            reserveInfo.lentOut += amountIn;
-            IERC20(token).approve(pool, amountIn);
-            IPool(pool).deposit(token, amountIn, address(this), _getAaveInfo().referralCode);
-        }else {
-            reserveInfo.marketCollateralAmount += amountIn;
+        if(ifOpenAave) {
+            reserveInfo.lentOut += reserveInfo.balance;
+            IERC20(token).approve(pool, reserveInfo.balance);
+            IPool(pool).deposit(token, reserveInfo.balance, address(this), _getAaveInfo().referralCode);
         }
-        state = true;
     }
 
     function touch(
         bool ifEnd,
-        address receiver, 
-        uint256 amount
+        bool ifOpenAave,
+        address receiver,
+        uint128 amountOut
     ) external onlyCaller {
-        bool aaveState = getAavePoolPaused();
         address pool = _getAaveInfo().pool;
-        if(aaveState == false) {
+        reserveInfo.totalCollateralAmount -= amountOut;
+        if(ifOpenAave) {
             address aToken = _getAaveInfo().aToken;
             uint256 aTokenBalance = IERC20(aToken).balanceOf(address(this));
             if(aTokenBalance > 0){
@@ -68,19 +66,19 @@ contract AroundPool is IAroundPool {
                 IERC20(aToken).approve(pool, 0);
             }
         }
-        IERC20(token).safeTransfer(receiver, amount);
+        IERC20(token).safeTransfer(receiver, amountOut);
         uint256 tokenBalance = _getTokenBalance();
-        if(ifEnd == false && aaveState == false) {
+        if(ifEnd == false && ifOpenAave) {
             IERC20(token).approve(pool, tokenBalance);
             IPool(pool).deposit(token, tokenBalance, address(this), _getAaveInfo().referralCode);
         }
-        emit Touch(token, receiver, amount);
+        reserveInfo.balance = uint128(_getTokenBalance());
+        emit Touch(token, receiver, amountOut);
     }
 
-    function exitFromAave() external onlyCaller {
-        bool aaveState = getAavePoolPaused();
+    function allot(bool ifOpenAave) external onlyCaller {
         address pool = _getAaveInfo().pool;
-        if(aaveState == false) {
+        if(ifOpenAave) {
             address aToken = _getAaveInfo().aToken;
             uint256 aTokenBalance = IERC20(aToken).balanceOf(address(this));
             if(aTokenBalance > 0){
@@ -88,13 +86,22 @@ contract AroundPool is IAroundPool {
                 IPool(pool).withdraw(token, type(uint256).max, address(this));
                 IERC20(aToken).approve(pool, 0);
             }
-        }else {
-            revert ("Inactive Aave pool");
+        }
+        reserveInfo.balance = uint128(_getTokenBalance());
+        if(reserveInfo.balance > reserveInfo.totalCollateralAmount) {
+            reserveInfo.lentOut = 0;
+            //Transfer to AroundFactory and carry out redistribution.
+            if(reserveInfo.balance > reserveInfo.totalCollateralAmount + MinimumProfit) {
+                uint256 earn = reserveInfo.balance - reserveInfo.totalCollateralAmount - MinimumProfit;
+                IERC20(token).safeTransfer(aroundPoolFactory, earn);
+            }
+        } else {
+            reserveInfo.lentOut -= reserveInfo.balance;
         }
     }
 
     function _checkCaller() private view {
-        require(msg.sender == aroundMarket, "Non caller");
+        require(msg.sender == aroundMarket);
     }
 
     function _getAaveInfo() private view returns (IAroundPoolFactory.AaveInfo memory thisAaveInfo) {
