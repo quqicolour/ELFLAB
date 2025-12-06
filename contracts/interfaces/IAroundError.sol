@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 interface IAroundError {
 
     error AlreadyInitialize();
+    error NonMultiSig();
     error InvalidState();
     error InvalidToken();
     error ZeroAmount();

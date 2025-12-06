@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {AroundMath} from "../libraries/AroundMath.sol";
-import {AroundLibrary} from "../libraries/AroundLibrary.sol";
 import {IAroundMarket} from "../interfaces/IAroundMarket.sol";
 import {IAroundPool} from "../interfaces/IAroundPool.sol";
 import {IAroundPoolFactory} from "../interfaces/IAroundPoolFactory.sol";
@@ -26,6 +25,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
     uint16 private DefaultTotalFee = 600;
     uint32 private DefaultVirtualLiquidity = 100_000;
 
+    address private multiSig;
     address private feeReceiver;
     address public aroundPoolFactory;
     address public oracle;
@@ -39,31 +39,50 @@ contract AroundMarket is IAroundMarket, IAroundError {
     mapping(uint256 => mapping(uint64 => address)) public raffleTicketToUser;
     mapping(address => TokenInfo) public tokenInfo;
 
-    function initialize(address thisAroundPoolFactory, address thisOracle) external {
+    modifier onlyMultiSig {
+        _checkMultiSig();
+        _;
+    }
+
+    function initialize(
+        address thisMultiSig, 
+        address thisAroundPoolFactory, 
+        address thisOracle
+    ) external {
         if(isInitialize) {
             revert AlreadyInitialize();
         }
+        multiSig = thisMultiSig;
         aroundPoolFactory = thisAroundPoolFactory;
         oracle = thisOracle;
+        feeReceiver = multiSig;
         isInitialize = true;
     }
 
-    function changeDefaultVirtualLiquidity(uint32 newDefaultVirtualLiquidity) external {
+    function changeFeeReceiver(address newFeeReceiver) external onlyMultiSig {
+        feeReceiver = newFeeReceiver;
+    }
+
+    function changeDefaultVirtualLiquidity(uint32 newDefaultVirtualLiquidity) external onlyMultiSig {
         DefaultVirtualLiquidity = newDefaultVirtualLiquidity;
     }
 
-    function setMarketOpenAave(uint256 thisMarketId, bool state) external {
+    function setMarketOpenAave(uint256 thisMarketId, bool state) external onlyMultiSig {
         marketInfo[thisMarketId].marketState.ifOpenAave = state;
     }
 
     function setFeeInfo(
-        PackedBaseFees calldata baseFee
-    ) external {
-        DefaultOfficialFee =  baseFee.officialFee;
-        DefaultLuckyFee = baseFee.luckyFee;
-        DefaultOracleFee = baseFee.oracleFee;
-        DefaultCreatorFee = baseFee.creatorFee;
-        DefaultLiquidityFee = baseFee.liquidityFee;
+        uint16 officialFee,
+        uint16 liquidityFee,
+        uint16 oracleFee,
+        uint16 luckyFee,
+        uint16 creatorFee
+    ) external onlyMultiSig {
+        DefaultOfficialFee =  officialFee;
+        DefaultLuckyFee = luckyFee;
+        DefaultOracleFee = oracleFee;
+        DefaultCreatorFee = creatorFee;
+        DefaultLiquidityFee = liquidityFee;
         DefaultTotalFee = DefaultOfficialFee + DefaultLuckyFee + 
         DefaultOracleFee + DefaultCreatorFee + DefaultLiquidityFee;
     }
@@ -72,7 +91,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
         address token, 
         bool state,
         uint128 amount
-    ) external {
+    ) external onlyMultiSig {
         tokenInfo[token] = TokenInfo({
             valid: state,
             guaranteeAmount: amount
@@ -100,7 +119,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
         }
 
         {
-            uint256 actualVirtualAmount = AroundLibrary._getGuardedAmount(
+            uint256 actualVirtualAmount = AroundMath._getGuardedAmount(
                 decimals,
                 params.expectVirtualLiquidity,
                 DefaultVirtualLiquidity
@@ -158,10 +177,8 @@ contract AroundMarket is IAroundMarket, IAroundError {
                 thisMarketId
             );
         }
-        uint8 decimals = _getDecimals(getMarketInfo(thisMarketId).collateral);
-        uint128 netInput;
         // Calculate the net input (minus handling fees)
-        (netInput, ) = AroundMath._calculateNetInput(getFeeInfo(thisMarketId).totalFee, amount);
+        (uint128 netInput, ) = AroundMath._calculateNetInput(getFeeInfo(thisMarketId).totalFee, amount);
         
         // Calculate the output quantity and handling fee
         (uint256 output, ) = AroundMath._calculateBuyOutput(
@@ -192,7 +209,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
         liqudityInfo[thisMarketId].tradeCollateralAmount += netInput;
 
         //Check raffle ticket
-        _updateRaffleTicket(decimals, thisMarketId);
+        _updateRaffleTicket(thisMarketId);
         emit Buy(thisMarketId, msg.sender, bet, amount);
     }
 
@@ -202,11 +219,8 @@ contract AroundMarket is IAroundMarket, IAroundError {
         //TODO
         _checkMarketIfClosed(thisMarketId);
 
-        uint8 decimals = _getDecimals(getMarketInfo(thisMarketId).collateral);
-        uint128 fee;
-        uint256 output;
         // Calculate the output quantity and handling fee
-        (output, fee) = AroundMath._calculateSellOutput(
+        (uint256 output, uint128 fee) = AroundMath._calculateSellOutput(
             bet,
             getFeeInfo(thisMarketId).totalFee,
             getLiqudityInfo(thisMarketId).virtualLiquidity,
@@ -259,7 +273,7 @@ contract AroundMarket is IAroundMarket, IAroundError {
         }
 
         //Check raffle ticket
-        _updateRaffleTicket(decimals, thisMarketId);
+        _updateRaffleTicket(thisMarketId);
         emit Sell(thisMarketId, msg.sender, bet, amount);
     }
 
@@ -330,14 +344,14 @@ contract AroundMarket is IAroundMarket, IAroundError {
         liqudityInfo[thisMarketId].lpCollateralAmount -= collateralAmount;
         liqudityInfo[thisMarketId].totalLp -= lpAmount;
         
+        // Update the user's position
+        userPosition[msg.sender][thisMarketId].lp -= lpAmount;
+        userPosition[msg.sender][thisMarketId].collateralAmount -= collateralAmount;
+        
         // Update the balance of handling fee
         if (liquidityFeeShare > 0) {
             liqudityInfo[thisMarketId].liquidityFeeAmount -= liquidityFeeShare;
         }
-        
-        // Update the user's position
-        userPosition[msg.sender][thisMarketId].lp -= lpAmount;
-        userPosition[msg.sender][thisMarketId].collateralAmount -= collateralAmount;
 
         //Touch aroundPool
         _touchAroundPool(
@@ -433,7 +447,8 @@ contract AroundMarket is IAroundMarket, IAroundError {
         }
     }
 
-    function _updateRaffleTicket(uint8 _decimals, uint256 _thisMarketId) private {
+    function _updateRaffleTicket(uint256 _thisMarketId) private {
+        uint8 _decimals = _getDecimals(getMarketInfo(_thisMarketId).collateral);
         if(getUserPosition(msg.sender, _thisMarketId).volume >= Min_Lucky_Volume * 10 ** _decimals) {
             marketInfo[_thisMarketId].totalRaffleTicket++;
             if(getUserPosition(msg.sender, _thisMarketId).raffleTicketNumber == 0){
@@ -477,6 +492,12 @@ contract AroundMarket is IAroundMarket, IAroundError {
         if(suc == false) {revert TouchAroundErr();}
     }
 
+    function _checkZeroAmount(uint256 _amount) private pure {
+        if(_amount == 0) {
+            revert ZeroAmount();
+        }
+    }
+
     function _checkLiquidityWayIfClosed(uint256 _thisMarketId) private view {
         if(block.timestamp + 1 hours >= getMarketInfo(_thisMarketId).endTime) {
             revert LiquidityWayClosed();
@@ -489,9 +510,9 @@ contract AroundMarket is IAroundMarket, IAroundError {
         }
     }
 
-    function _checkZeroAmount(uint256 _amount) private pure {
-        if(_amount == 0) {
-            revert ZeroAmount();
+    function _checkMultiSig() private view {
+        if(msg.sender != multiSig) {
+            revert NonMultiSig();
         }
     }
 

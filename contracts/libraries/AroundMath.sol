@@ -7,6 +7,11 @@ library AroundMath {
 
     uint32 private constant FEE_DENOMINATOR = 100_000;
     uint256 private constant ONERATE = 1 ether;
+    uint256 private constant Max_Virtual_Rate = 100_000_000;
+
+    error InvalidVirtualAmount();
+    error InvalidBet();
+
     function _calculateNetInput(
         uint16 _feeRate, 
         uint128 _inputAmount
@@ -46,7 +51,7 @@ library AroundMath {
                 _noAmount
             );
         } else {
-            revert("Invalid bet");
+            revert InvalidBet();
         }
     }
     
@@ -413,6 +418,20 @@ library AroundMath {
         if (_totalLp > 0) {
             totalValue = ((_yesAmount * currentPrice + (ONERATE - currentPrice) * _noAmount) / ONERATE 
             + _feeAmount) * _lpShare / _totalLp;
+        }
+    }
+
+    function _getGuardedAmount(
+        uint8 _thisDecimals, 
+        uint128 _expectVirtualAmount,
+        uint128 _currentVirtualAmount
+    ) internal pure returns (uint256 _amountOut) {
+        if (_expectVirtualAmount == _currentVirtualAmount) {
+            _amountOut = 100 * 10 ** _thisDecimals;
+        }else if(_expectVirtualAmount > _currentVirtualAmount && _expectVirtualAmount <= Max_Virtual_Rate) {
+             _amountOut = 100 * (_expectVirtualAmount / _currentVirtualAmount + 1) * 10 ** _thisDecimals;
+        }else {
+            revert InvalidVirtualAmount();
         }
     }
 }

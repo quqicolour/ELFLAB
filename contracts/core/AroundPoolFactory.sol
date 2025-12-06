@@ -41,7 +41,7 @@ contract AroundPoolFactory is Ownable, IAroundPoolFactory{
         address thisPool,
         address thisAToken,
         address thisAaveProtocolDataProvider
-    ) external {
+    ) external onlyOwner {
         aaveInfo.isClosedAave = state;
         aaveInfo.pool = thisPool;
         aaveInfo.aToken = thisAToken;

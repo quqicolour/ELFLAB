@@ -6,14 +6,6 @@ interface IAroundMarket {
     enum Result{Pending, Yes, No}
 
     /*********************************Struct****************************************** */
-    struct PackedBaseFees {
-        uint16 officialFee;
-        uint16 liquidityFee;
-        uint16 oracleFee;
-        uint16 luckyFee;
-        uint16 creatorFee;
-        uint16 totalFee;
-    }
     
     struct CreateMarketParams {
         uint32 period;
